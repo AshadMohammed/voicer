@@ -7,7 +7,7 @@ struct NotchRecorderView<S: RecorderStateProvider & ObservableObject>: View {
     let onRecordButtonTapped: () -> Void
     let onCloseTapped: () -> Void
     let onAssistantFollowUp: (String) -> Void
-    @AppStorage(RecorderDisplaySettingsKeys.showLiveTranscript) private var showLiveTranscript = true
+    @AppStorage(RecorderDisplaySettingsKeys.showLiveTranscript) private var showLiveTranscript = false
     /// Bumped on every screen reconfiguration to invalidate the view. The notch metrics below
     /// come from AppKit, which SwiftUI cannot observe on its own, so without this the view keeps
     /// whatever sizes it happened to compute the last time it was rendered.

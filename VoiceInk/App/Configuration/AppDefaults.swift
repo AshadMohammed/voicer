@@ -149,7 +149,7 @@ enum AppDefaults {
             "SelectedLanguage": "en",
             "AppendTrailingSpace": true,
             "RecorderType": "mini",
-            RecorderDisplaySettingsKeys.showLiveTranscript: true,
+            RecorderDisplaySettingsKeys.showLiveTranscript: false,
             CloudTranscriptionSettings.timeoutKey: CloudTranscriptionSettings.defaultTimeout,
             AutoLearnSettings.isEnabledKey: true,
             AutoLearnSettings.reviewScheduleKey: AutoLearnReviewSchedule.immediately.rawValue,

@@ -48,6 +48,8 @@ class RecordingShortcutManager: ObservableObject {
         case pushToTalk = "pushToTalk"
         case hybrid = "hybrid"
         case doubleTap = "doubleTap"
+        // Hold to talk; double tap to record hands-free until the next press.
+        case holdOrDoubleTap = "holdOrDoubleTap"
 
         var displayName: String {
             switch self {
@@ -55,6 +57,7 @@ class RecordingShortcutManager: ObservableObject {
             case .pushToTalk: return String(localized: "Push to Talk")
             case .hybrid: return String(localized: "Hybrid")
             case .doubleTap: return String(localized: "Double Tap")
+            case .holdOrDoubleTap: return String(localized: "Hold or Double Tap")
             }
         }
     }
@@ -315,10 +318,16 @@ final class RecordingShortcutModeHandler {
     private var activeShortcutIsDoubleTap = false
     private var lastShortcutPressTime: Date?
     private var pendingDoubleTapReleaseTimes: [ShortcutAction: TimeInterval] = [:]
+    // Hold-or-double-tap: the action whose first quick tap is waiting for a second tap.
+    private var pendingFirstTapAction: ShortcutAction?
+    private var pendingFirstTapTimeout: Task<Void, Never>?
+    private var ignoresNextShortcutUp = false
 
     private let shortcutPressCooldown: TimeInterval = 0.5
     private let hybridPressThreshold: TimeInterval = 0.5
     private let doubleTapThreshold: TimeInterval = 0.7
+    private let holdPressThreshold: TimeInterval = 0.3
+    private let secondTapWindow: TimeInterval = 0.5
 
     init(
         canHandleShortcutAction: @escaping @MainActor () -> Bool,
@@ -343,6 +352,28 @@ final class RecordingShortcutModeHandler {
         activeShortcutCanCancelAccidentalStart = false
         activeShortcutIsDoubleTap = false
         clearPendingDoubleTaps()
+        clearPendingFirstTap()
+        ignoresNextShortcutUp = false
+    }
+
+    private func clearPendingFirstTap() {
+        pendingFirstTapTimeout?.cancel()
+        pendingFirstTapTimeout = nil
+        pendingFirstTapAction = nil
+    }
+
+    /// A lone quick tap starts recording; if no second tap follows, throw that recording away.
+    private func schedulePendingFirstTapTimeout(for action: ShortcutAction) {
+        pendingFirstTapTimeout?.cancel()
+        pendingFirstTapAction = action
+        pendingFirstTapTimeout = Task { @MainActor [weak self, secondTapWindow] in
+            try? await Task.sleep(nanoseconds: UInt64(secondTapWindow * 1_000_000_000))
+            guard !Task.isCancelled, let self, self.pendingFirstTapAction == action else { return }
+            self.pendingFirstTapAction = nil
+            self.pendingFirstTapTimeout = nil
+            guard !self.isShortcutPressed, self.isRecorderVisible() else { return }
+            await self.cancelRecording()
+        }
     }
 
     func clearPendingDoubleTaps() {
@@ -362,7 +393,11 @@ final class RecordingShortcutModeHandler {
 
     func resetShortcutState(for action: ShortcutAction) {
         pendingDoubleTapReleaseTimes.removeValue(forKey: action)
+        if pendingFirstTapAction == action {
+            clearPendingFirstTap()
+        }
         guard activeRecordingShortcutAction == action else { return }
+        ignoresNextShortcutUp = false
         isShortcutPressed = false
         shortcutPressStartTime = nil
         activeRecordingShortcutAction = nil
@@ -385,7 +420,7 @@ final class RecordingShortcutModeHandler {
             return
         }
 
-        if mode != .doubleTap, let lastTrigger = lastShortcutPressTime,
+        if mode != .doubleTap, mode != .holdOrDoubleTap, let lastTrigger = lastShortcutPressTime,
             Date().timeIntervalSince(lastTrigger) < shortcutPressCooldown
         {
             return
@@ -423,6 +458,30 @@ final class RecordingShortcutModeHandler {
                 await toggleRecorderPanel(modeId)
             }
 
+        case .holdOrDoubleTap:
+            if isHandsFreeRecording && isRecorderVisible() {
+                // Any press ends a hands-free recording; its release does nothing.
+                isHandsFreeRecording = false
+                ignoresNextShortcutUp = true
+                clearPendingFirstTap()
+                guard canHandleShortcutAction() else { return }
+                await toggleRecorderPanel(modeId)
+                return
+            }
+            isHandsFreeRecording = false
+
+            if pendingFirstTapAction == action {
+                // Second tap: the recording started by the first tap keeps running.
+                pendingFirstTapTimeout?.cancel()
+                pendingFirstTapTimeout = nil
+                return
+            }
+
+            if !isRecorderVisible() {
+                guard canHandleShortcutAction() else { return }
+                await toggleRecorderPanel(modeId)
+            }
+
         case .doubleTap:
             break
         }
@@ -448,6 +507,29 @@ final class RecordingShortcutModeHandler {
             if isRecorderVisible() {
                 guard canHandleShortcutAction() else { return }
                 await toggleRecorderPanel(modeId)
+            }
+
+        case .holdOrDoubleTap:
+            if ignoresNextShortcutUp {
+                ignoresNextShortcutUp = false
+                break
+            }
+            let pressDuration = shortcutPressStartTime.map { eventTime - $0 } ?? 0
+            let isSecondTap = pendingFirstTapAction == action
+            clearPendingFirstTap()
+
+            if pressDuration >= holdPressThreshold {
+                // Held: push to talk, so stop and transcribe now.
+                if isRecorderVisible() {
+                    guard canHandleShortcutAction() else { break }
+                    await toggleRecorderPanel(modeId)
+                }
+            } else if isSecondTap {
+                // Double tap: keep recording until the next press.
+                isHandsFreeRecording = isRecorderVisible()
+            } else if isRecorderVisible() {
+                // First quick tap: wait briefly for a second one.
+                schedulePendingFirstTapTimeout(for: action)
             }
 
         case .hybrid:

@@ -23,7 +23,7 @@ struct SettingsView: View {
         .system
     @AppStorage(AppLanguagePreference.userDefaultsKey) private var appLanguagePreference = AppLanguagePreference
         .systemValue
-    @AppStorage(RecorderDisplaySettingsKeys.showLiveTranscript) private var showLiveTranscript = true
+    @AppStorage(RecorderDisplaySettingsKeys.showLiveTranscript) private var showLiveTranscript = false
     @AppStorage(FinishAndSendSettings.key) private var finishAndSendKey = FinishAndSendKey.none.rawValue
     @State private var showResetOnboardingAlert = false
     @State private var showLanguageRestartAlert = false

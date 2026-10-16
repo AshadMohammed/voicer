@@ -7,7 +7,7 @@ struct MiniRecorderView<S: RecorderStateProvider & ObservableObject>: View {
     let onRecordButtonTapped: () -> Void
     let onCloseTapped: () -> Void
     let onAssistantFollowUp: (String) -> Void
-    @AppStorage(RecorderDisplaySettingsKeys.showLiveTranscript) private var showLiveTranscript = true
+    @AppStorage(RecorderDisplaySettingsKeys.showLiveTranscript) private var showLiveTranscript = false
 
     // MARK: - Layout Constants
 
