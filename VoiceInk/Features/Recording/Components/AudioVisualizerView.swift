@@ -11,46 +11,77 @@ struct AudioVisualizer: View {
     private let minHeight: CGFloat = 4
     private let maxHeight: CGFloat = 28
 
-    private let phases: [Double]
-
-    init(audioMeterProvider: @escaping () -> AudioMeter, color: Color, isActive: Bool) {
-        self.audioMeterProvider = audioMeterProvider
-        self.color = color
-        self.isActive = isActive
-        self.phases = (0..<barCount).map { Double($0) * 0.4 }
-    }
+    @State private var levels = VoiceLevelHistory(size: 8)
 
     var body: some View {
         TimelineView(.animation(minimumInterval: 0.016)) { context in
-            let audioMeter = audioMeterProvider()
+            let history = levels.update(with: audioMeterProvider(), at: context.date)
 
             HStack(spacing: barSpacing) {
                 ForEach(0..<barCount, id: \.self) { index in
                     RoundedRectangle(cornerRadius: barWidth / 2)
                         .fill(color.opacity(0.85))
-                        .frame(
-                            width: barWidth,
-                            height: barHeight(
-                                for: index,
-                                at: context.date,
-                                audioMeter: audioMeter
-                            )
-                        )
+                        .frame(width: barWidth, height: barHeight(for: index, history: history))
                 }
             }
         }
     }
 
-    private func barHeight(for index: Int, at date: Date, audioMeter: AudioMeter) -> CGFloat {
+    // The middle bar shows the voice level right now and older levels spread outward,
+    // so the bars sit flat in silence and only move when you speak.
+    private func barHeight(for index: Int, history: [Double]) -> CGFloat {
         guard isActive else { return minHeight }
 
-        let time = date.timeIntervalSince1970
-        let amplitude = max(0, min(1, pow(audioMeter.averagePower, 0.7)))  // boosted for visibility
-        let wave = sin(time * 8 + phases[index]) * 0.5 + 0.5
-        let centerDistance = abs(Double(index) - Double(barCount) / 2) / Double(barCount / 2)
-        let centerBoost = 1.0 - (centerDistance * 0.4)
+        let center = barCount / 2
+        let age = abs(index - center)
+        let level = age < history.count ? history[age] : 0
+        let centerBoost = 1.0 - Double(age) / Double(center) * 0.4
 
-        return max(minHeight, minHeight + CGFloat(amplitude * wave * centerBoost) * (maxHeight - minHeight))
+        return minHeight + CGFloat(level * centerBoost) * (maxHeight - minHeight)
+    }
+}
+
+/// Turns the mic level into a voice level by learning the room's background noise and showing only sound above it.
+final class VoiceLevelHistory {
+    // Levels use the recorder's 0...1 scale, where 1.0 spans 60 dB.
+    private static var noiseFloor = 1.0 / 6.0  // about -50 dB until the room is heard; remembered between recordings
+    private let floorRisePerSecond = 5.0 / 60.0  // 5 dB a second, so a steady hum is learned but a sentence isn't
+    private let gateMargin = 6.0 / 60.0  // sound must clear the room noise by 6 dB to count as voice
+    private let fullScale = 24.0 / 60.0  // 24 dB past the gate fills the bar
+    private let shiftInterval: TimeInterval = 0.06
+
+    private var samples: [Double]
+    private var lastFrame: Date?
+    private var firstHeard: Date?
+    private var lastShift = Date.distantPast
+
+    init(size: Int) {
+        samples = Array(repeating: 0, count: size)
+    }
+
+    func update(with meter: AudioMeter, at date: Date) -> [Double] {
+        let level = meter.averagePower
+        let elapsed = lastFrame.map { min(max(date.timeIntervalSince($0), 0), 0.1) } ?? 0
+        lastFrame = date
+
+        // The floor drops at once to any quieter moment and creeps up slowly, so it settles on the room's steady noise.
+        // The mic reads silent and then fades in as a recording starts, so the floor waits until that has settled.
+        if firstHeard == nil, level > 0.01 { firstHeard = date }
+        if let firstHeard, date.timeIntervalSince(firstHeard) > 0.15 {
+            Self.noiseFloor = min(level, Self.noiseFloor + elapsed * floorRisePerSecond)
+        }
+
+        let aboveGate = (level - Self.noiseFloor - gateMargin) / fullScale
+        let voice = pow(max(0, min(1, aboveGate)), 0.8)
+
+        if date.timeIntervalSince(lastShift) >= shiftInterval {
+            samples.insert(voice, at: 0)
+            samples.removeLast()
+            lastShift = date
+        } else {
+            samples[0] = voice
+        }
+        return samples
     }
 }
 
