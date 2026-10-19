@@ -53,11 +53,11 @@ struct DashboardInsightsView: View {
             .accessibilityLabel("Back to dashboard")
 
             VStack(alignment: .leading, spacing: 3) {
-                Text("VoiceInk Insights")
+                Text("Voicer Insights")
                     .font(.system(size: 26, weight: .bold))
                     .foregroundStyle(AppTheme.Text.primary)
 
-                Text("A closer look at your VoiceInk usage.")
+                Text("A closer look at your Voicer usage.")
                     .font(.system(size: 13))
                     .foregroundStyle(AppTheme.Text.secondary)
             }

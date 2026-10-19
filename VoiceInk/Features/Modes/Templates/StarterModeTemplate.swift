@@ -84,7 +84,7 @@ enum StarterModeCatalog {
             icon: .symbol("envelope.fill"),
             description: "Turn a rough thought into a clean email.",
             guidance:
-                "Use this after selecting relevant text or opening the related window. VoiceInk uses that context to shape a clear email draft.",
+                "Use this after selecting relevant text or opening the related window. Voicer uses that context to shape a clear email draft.",
             promptId: PromptTemplates.emailPromptId,
             outputMode: .paste,
             usesAIEnhancement: true,
@@ -114,7 +114,7 @@ enum StarterModeCatalog {
             icon: .symbol("bubble.left.and.bubble.right.fill"),
             description: "Ask a question and keep the answer in the recorder.",
             guidance:
-                "Use this for answers, summaries, and follow-ups. Instead of pasting, VoiceInk keeps the conversation inside the recorder.",
+                "Use this for answers, summaries, and follow-ups. Instead of pasting, Voicer keeps the conversation inside the recorder.",
             promptId: PromptTemplates.assistantPromptId,
             outputMode: .respond,
             usesAIEnhancement: true,

@@ -1,5 +1,6 @@
 import AppKit
 import Foundation
+import os
 
 @MainActor
 class RecordingShortcutManager: ObservableObject {
@@ -301,6 +302,13 @@ private final class RecordingShortcutModeSource {
     }
 }
 
+/// Tells the recorder pill when a recording is locked on hands-free, so it can glow.
+@MainActor
+final class HandsFreeLockIndicator: ObservableObject {
+    static let shared = HandsFreeLockIndicator()
+    @Published var isLocked = false
+}
+
 @MainActor
 final class RecordingShortcutModeHandler {
     private let canHandleShortcutAction: @MainActor () -> Bool
@@ -310,7 +318,9 @@ final class RecordingShortcutModeHandler {
     private let cancelRecording: @MainActor () async -> Void
 
     private var shortcutPressStartTime: TimeInterval?
-    private var isHandsFreeRecording = false
+    private var isHandsFreeRecording = false {
+        didSet { HandsFreeLockIndicator.shared.isLocked = isHandsFreeRecording }
+    }
     private var isShortcutPressed = false
     private var activeRecordingShortcutAction: ShortcutAction?
     private var interruptedRecordingActions = Set<ShortcutAction>()
@@ -322,6 +332,8 @@ final class RecordingShortcutModeHandler {
     private var pendingFirstTapAction: ShortcutAction?
     private var pendingFirstTapTimeout: Task<Void, Never>?
     private var ignoresNextShortcutUp = false
+
+    private let logger = Logger(subsystem: "com.prakashjoshipax.voiceink", category: "RecordingShortcut")
 
     private let shortcutPressCooldown: TimeInterval = 0.5
     private let hybridPressThreshold: TimeInterval = 0.5
@@ -471,9 +483,11 @@ final class RecordingShortcutModeHandler {
             isHandsFreeRecording = false
 
             if pendingFirstTapAction == action {
-                // Second tap: the recording started by the first tap keeps running.
-                pendingFirstTapTimeout?.cancel()
-                pendingFirstTapTimeout = nil
+                // Second tap: lock the recording on as the key goes down, so the pill glows while it is
+                // still held. How long this press lasts no longer matters; its release does nothing.
+                clearPendingFirstTap()
+                isHandsFreeRecording = isRecorderVisible()
+                ignoresNextShortcutUp = true
                 return
             }
 
@@ -515,7 +529,10 @@ final class RecordingShortcutModeHandler {
                 break
             }
             let pressDuration = shortcutPressStartTime.map { eventTime - $0 } ?? 0
-            let isSecondTap = pendingFirstTapAction == action
+            let handlingDelay = ProcessInfo.processInfo.systemUptime - eventTime
+            logger.notice(
+                "Hold-or-double-tap release: pressed \(pressDuration, format: .fixed(precision: 3), privacy: .public)s, handled \(handlingDelay, format: .fixed(precision: 3), privacy: .public)s after the key moved"
+            )
             clearPendingFirstTap()
 
             if pressDuration >= holdPressThreshold {
@@ -524,9 +541,6 @@ final class RecordingShortcutModeHandler {
                     guard canHandleShortcutAction() else { break }
                     await toggleRecorderPanel(modeId)
                 }
-            } else if isSecondTap {
-                // Double tap: keep recording until the next press.
-                isHandsFreeRecording = isRecorderVisible()
             } else if isRecorderVisible() {
                 // First quick tap: wait briefly for a second one.
                 schedulePendingFirstTapTimeout(for: action)

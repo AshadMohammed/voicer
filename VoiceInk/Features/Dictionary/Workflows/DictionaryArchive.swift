@@ -130,7 +130,7 @@ enum DictionaryArchiveError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .invalidFile:
-            return String(localized: "This file does not contain a valid VoiceInk dictionary.")
+            return String(localized: "This file does not contain a valid Voicer dictionary.")
         case .unsupportedFormat(let format):
             return String(format: String(localized: "Unsupported dictionary format: %@"), format)
         case .unsupportedVersion(let version):

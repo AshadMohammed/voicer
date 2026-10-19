@@ -61,7 +61,7 @@ struct ChangeLogView: View {
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(AppTheme.Text.primary)
 
-                Text("VoiceInk \(appVersion)")
+                Text("Voicer \(appVersion)")
                     .font(.system(size: 12))
                     .foregroundStyle(AppTheme.Text.secondary)
             }

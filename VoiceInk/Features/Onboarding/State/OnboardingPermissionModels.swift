@@ -63,9 +63,9 @@ enum OnboardingStage: String, CaseIterable {
         case .api:
             return String(localized: "Verify API Key")
         case .experience:
-            return String(localized: "Experience VoiceInk")
+            return String(localized: "Experience Voicer")
         case .contextAwareness:
-            return String(localized: "VoiceInk is Context-Aware")
+            return String(localized: "Voicer is Context-Aware")
         case .trust:
             return String(localized: "VoiceInk is Open Source")
         case .license:
@@ -76,23 +76,23 @@ enum OnboardingStage: String, CaseIterable {
     var subtitle: String {
         switch self {
         case .permissions:
-            return String(localized: "Allow VoiceInk to work across all your apps.")
+            return String(localized: "Allow Voicer to work across all your apps.")
         case .microphone:
-            return String(localized: "Pick the microphone VoiceInk should use for recordings.")
+            return String(localized: "Pick the microphone Voicer should use for recordings.")
         case .model:
             return String(localized: "Use NVIDIA's Parakeet model locally, or connect a cloud transcription provider.")
         case .api:
             return String(
                 localized:
-                    "VoiceInk uses LLMs to enhance transcripts and perform AI actions. Set up an API key before continuing."
+                    "Voicer uses LLMs to enhance transcripts and perform AI actions. Set up an API key before continuing."
             )
         case .experience:
-            return String(localized: "Try a few short samples and see how VoiceInk works before you start.")
+            return String(localized: "Try a few short samples and see how Voicer works before you start.")
         case .contextAwareness:
             return String(
-                localized: "VoiceInk can select the right mode from the app you are using and the rules you configure.")
+                localized: "Voicer can select the right mode from the app you are using and the rules you configure.")
         case .trust:
-            return String(localized: "VoiceInk is private by default. No data leaves your device unless you opt in.")
+            return String(localized: "Voicer is private by default. No data leaves your device unless you opt in.")
         case .license:
             return String(localized: "Activate an existing key, purchase a license, or start a 7-day free trial.")
         }
@@ -123,20 +123,20 @@ enum OnboardingPermissionKind: String, CaseIterable, Identifiable {
         case .microphone:
             return OnboardingPermissionDescriptor(
                 title: "Microphone",
-                subtitle: String(localized: "VoiceInk uses your microphone to capture your voice.")
+                subtitle: String(localized: "Voicer uses your microphone to capture your voice.")
             )
 
         case .accessibility:
             return OnboardingPermissionDescriptor(
                 title: String(localized: "Accessibility"),
-                subtitle: String(localized: "VoiceInk uses Accessibility to type transcriptions directly into any app.")
+                subtitle: String(localized: "Voicer uses Accessibility to type transcriptions directly into any app.")
             )
 
         case .screenRecording:
             return OnboardingPermissionDescriptor(
                 title: String(localized: "Screen Recording"),
                 subtitle: String(
-                    localized: "VoiceInk reads visible screen content to improve the accuracy of transcripts.")
+                    localized: "Voicer reads visible screen content to improve the accuracy of transcripts.")
             )
         }
     }

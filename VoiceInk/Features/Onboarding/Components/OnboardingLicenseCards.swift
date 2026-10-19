@@ -77,7 +77,7 @@ struct OnboardingLicenseSetupCard: View {
 
             OnboardingLicenseActionRow(
                 title: "Start 7-day Trial",
-                subtitle: "Use VoiceInk now.",
+                subtitle: "Use Voicer now.",
                 systemImage: "calendar",
                 isEnabled: true,
                 action: onStartTrial

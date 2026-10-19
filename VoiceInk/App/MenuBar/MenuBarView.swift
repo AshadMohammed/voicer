@@ -35,7 +35,7 @@ struct MenuBarView: View {
 
             Divider()
 
-            Button("Quit VoiceInk") {
+            Button("Quit Voicer") {
                 NSApplication.shared.terminate(nil)
             }
         }
@@ -160,7 +160,7 @@ struct MenuBarView: View {
             }
             .disabled(!updaterViewModel.canCheckForUpdates)
 
-            Button("Quit VoiceInk") {
+            Button("Quit Voicer") {
                 NSApplication.shared.terminate(nil)
             }
         }

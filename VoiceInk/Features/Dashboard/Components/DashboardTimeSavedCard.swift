@@ -58,7 +58,7 @@ struct DashboardEditorialSummaryCard: View {
         }
         .dashboardInsightCardStyle()
         .accessibilityElement(children: .contain)
-        .accessibilityLabel("VoiceInk impact summary")
+        .accessibilityLabel("Voicer impact summary")
     }
 
     private var averageSessionText: String {

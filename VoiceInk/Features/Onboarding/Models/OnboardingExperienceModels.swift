@@ -184,7 +184,7 @@ enum OnboardingExperienceCatalog {
             showsContextAwarenessAfterCompletion: true,
             systemImage: "envelope.fill",
             title: "Write an Email",
-            subtitle: "Turn your spoken note into a clean email draft with VoiceInk.",
+            subtitle: "Turn your spoken note into a clean email draft with Voicer.",
             sampleLabel: "Sample text",
             sampleText:
                 "Hello Chris, could we move our meeting from Tuesday morning to Wednesday afternoon? Please confirm when you have a moment. Thanks, Jamie.",

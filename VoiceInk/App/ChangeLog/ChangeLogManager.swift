@@ -21,7 +21,7 @@ enum ChangeLogCatalog {
     static let latest = ChangeLogItem(
         id: "dictionary-auto-learn",
         summary:
-            "VoiceInk automatically learns from the corrections you make to improve transcription accuracy over time. Dictionary Auto Learn uses your currently configured AI provider and AI model. You can change them anytime in Dictionary Settings.",
+            "Voicer automatically learns from the corrections you make to improve transcription accuracy over time. Dictionary Auto Learn uses your currently configured AI provider and AI model. You can change them anytime in Dictionary Settings.",
         youtubeVideoID: "29Wy0SkoWk8"
     )
 }

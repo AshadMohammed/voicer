@@ -571,7 +571,7 @@ final class LicenseViewModel: ObservableObject {
     private var keychainUnavailableMessage: String {
         let recoveryMessage = String(
             localized:
-                "VoiceInk couldn't access the macOS Keychain. Quit and reopen VoiceInk. If the problem continues, restart your Mac."
+                "Voicer couldn't access the macOS Keychain. Quit and reopen Voicer. If the problem continues, restart your Mac."
         )
 
         guard let persistentStateErrorStatus else { return recoveryMessage }

@@ -32,7 +32,7 @@ struct HistorySettingsPanel: View {
                     sectionHeader(
                         "Quick History",
                         tip:
-                            "Open recent transcriptions without opening the main VoiceInk window. Search, select, and press Return to paste into your current app."
+                            "Open recent transcriptions without opening the main Voicer window. Search, select, and press Return to paste into your current app."
                     )
                 }
 

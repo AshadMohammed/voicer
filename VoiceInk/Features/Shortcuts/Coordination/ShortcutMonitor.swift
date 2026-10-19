@@ -166,8 +166,34 @@ final class ShortcutMonitor {
             kind: eventKind,
             inputCode: inputCode,
             modifierFlags: modifierFlags,
-            eventTime: ProcessInfo.processInfo.systemUptime
+            eventTime: Self.eventTime(of: event)
         )
+    }
+
+    /// When the key actually moved, on the `systemUptime` clock. This tap runs on the main thread, so reading
+    /// the clock here lands late whenever the app is busy (opening the recorder, starting audio), and a quick
+    /// tap then measures as a hold. The event's own stamp is in host ticks on Apple silicon and nanoseconds on
+    /// Intel, so both readings are tried and anything implausible falls back to now.
+    private static func eventTime(of event: CGEvent) -> TimeInterval {
+        let now = ProcessInfo.processInfo.systemUptime
+        let stamp = event.timestamp
+        guard stamp > 0 else { return now }
+
+        var timebase = mach_timebase_info_data_t()
+        mach_timebase_info(&timebase)
+        let nowTicks = mach_absolute_time()
+        if stamp <= nowTicks {
+            let ageNanos = Double(nowTicks - stamp) * Double(timebase.numer) / Double(timebase.denom)
+            if ageNanos < 2e9 { return now - ageNanos / 1e9 }
+        }
+
+        let nowNanos = clock_gettime_nsec_np(CLOCK_UPTIME_RAW)
+        if stamp <= nowNanos {
+            let ageNanos = Double(nowNanos - stamp)
+            if ageNanos < 2e9 { return now - ageNanos / 1e9 }
+        }
+
+        return now
     }
 
     private func resetPressedShortcutsAfterTapInterruption() {

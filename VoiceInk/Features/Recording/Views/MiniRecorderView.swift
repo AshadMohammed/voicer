@@ -8,6 +8,9 @@ struct MiniRecorderView<S: RecorderStateProvider & ObservableObject>: View {
     let onCloseTapped: () -> Void
     let onAssistantFollowUp: (String) -> Void
     @AppStorage(RecorderDisplaySettingsKeys.showLiveTranscript) private var showLiveTranscript = false
+    @ObservedObject private var handsFreeLock = HandsFreeLockIndicator.shared
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var lockBump = false
 
     // MARK: - Layout Constants
 
@@ -27,6 +30,16 @@ struct MiniRecorderView<S: RecorderStateProvider & ObservableObject>: View {
 
     private var hasAssistantResponse: Bool {
         assistantSession.isVisible
+    }
+
+    // Orange ring and glow while a double-tapped recording is locked on, so it is safe to let go of the key.
+    private var isLockedGlowing: Bool {
+        handsFreeLock.isLocked
+            && (stateProvider.recordingState == .recording || stateProvider.recordingState == .starting)
+    }
+
+    private var cornerRadius: CGFloat {
+        hasLiveTranscript || hasAssistantResponse ? expandedCornerRadius : compactCornerRadius
     }
 
     private var shouldShowCloseButton: Bool {
@@ -95,15 +108,27 @@ struct MiniRecorderView<S: RecorderStateProvider & ObservableObject>: View {
         }
         .frame(width: hasAssistantResponse ? assistantWidth : (hasLiveTranscript ? expandedWidth : compactWidth))
         .background(Color.black)
-        .clipShape(
-            RoundedRectangle(
-                cornerRadius: hasLiveTranscript || hasAssistantResponse ? expandedCornerRadius : compactCornerRadius,
-                style: .continuous)
+        .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                .strokeBorder(Color.orange, lineWidth: 2)
+                .opacity(isLockedGlowing ? 1 : 0)
         )
+        .shadow(color: Color.orange.opacity(isLockedGlowing ? 0.8 : 0), radius: 12)
+        .scaleEffect(lockBump ? 1.06 : 1, anchor: .bottom)
+        .animation(.easeOut(duration: 0.18), value: isLockedGlowing)
+        .onChange(of: isLockedGlowing) { _, locked in
+            guard locked, !reduceMotion else { return }
+            withAnimation(.spring(response: 0.18, dampingFraction: 0.6)) { lockBump = true }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.14) {
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) { lockBump = false }
+            }
+        }
         .animation(.easeInOut(duration: 0.3), value: hasLiveTranscript)
         .animation(.easeInOut(duration: 0.3), value: hasAssistantResponse)
         .gesture(WindowDragGesture())
         .allowsWindowActivationEvents()
+        .padding(.bottom, MiniRecorderPanel.glowRoom)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
     }
 }

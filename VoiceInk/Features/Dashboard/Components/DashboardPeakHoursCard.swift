@@ -70,7 +70,7 @@ struct DashboardPeakHoursCard: View {
 
     private var accessibilityValue: String {
         if isLocked {
-            return String(localized: "Continue using VoiceInk to unlock peak hours.")
+            return String(localized: "Continue using Voicer to unlock peak hours.")
         }
 
         guard summary.hasData else {
@@ -89,7 +89,7 @@ struct DashboardPeakHoursCard: View {
                 .background(AppTheme.Accent.fill)
                 .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
 
-            Text("Continue using VoiceInk to unlock peak hours.")
+            Text("Continue using Voicer to unlock peak hours.")
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(AppTheme.Text.primary)
                 .multilineTextAlignment(.center)

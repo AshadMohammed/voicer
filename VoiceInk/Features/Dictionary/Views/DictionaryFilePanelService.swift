@@ -29,7 +29,7 @@ enum DictionaryFilePanelService {
         openPanel.canChooseDirectories = false
         openPanel.allowsMultipleSelection = false
         openPanel.title = String(localized: "Import Dictionary")
-        openPanel.message = String(localized: "Choose a VoiceInk dictionary JSON file.")
+        openPanel.message = String(localized: "Choose a Voicer dictionary JSON file.")
 
         guard openPanel.runModal() == .OK, let url = openPanel.url else {
             return nil

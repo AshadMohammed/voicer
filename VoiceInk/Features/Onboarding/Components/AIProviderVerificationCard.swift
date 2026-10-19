@@ -283,7 +283,7 @@ struct AIProviderVerificationCard: View {
                     guard APIKeyManager.shared.saveAPIKey(key, forProvider: provider.rawValue) else {
                         verificationSucceeded = false
                         verificationMessage = String(
-                            localized: "The key worked, but VoiceInk could not save it securely.")
+                            localized: "The key worked, but Voicer could not save it securely.")
                         verificationDetailMessage = nil
                         onVerificationChanged()
                         return

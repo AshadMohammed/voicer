@@ -67,7 +67,7 @@ final class LogExporter {
         }
 
         if logCount == 0 {
-            logLines.append("No VoiceInk logs found in the last 30 minutes.")
+            logLines.append("No Voicer logs found in the last 30 minutes.")
         }
 
         return logLines

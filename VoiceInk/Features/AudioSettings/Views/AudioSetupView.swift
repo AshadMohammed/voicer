@@ -90,7 +90,7 @@ struct AudioSetupView: View {
     @ViewBuilder
     private var priorityOrderRows: some View {
         if prioritizedDevicesInDisplayOrder.isEmpty {
-            Text("Add microphones in the order VoiceInk should try them.")
+            Text("Add microphones in the order Voicer should try them.")
                 .foregroundStyle(.secondary)
         } else {
             ForEach(prioritizedDevicesInDisplayOrder) { device in

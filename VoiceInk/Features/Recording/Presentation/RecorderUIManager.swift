@@ -53,6 +53,7 @@ class RecorderUIManager: ObservableObject, RecorderPanelPresenting {
             if isRecorderPanelVisible {
                 showRecorderPanel()
             } else {
+                HandsFreeLockIndicator.shared.isLocked = false
                 hideRecorderPanel()
             }
         }

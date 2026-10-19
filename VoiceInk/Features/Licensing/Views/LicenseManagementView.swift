@@ -540,13 +540,13 @@ private struct ReportFeedbackBottomPanel: View {
         ZStack(alignment: .topTrailing) {
             VStack(spacing: 20) {
                 VStack(spacing: 18) {
-                    Text("Thank you for using VoiceInk")
+                    Text("Thank you for using Voicer")
                         .font(.system(size: 24, weight: .semibold, design: .rounded))
                         .multilineTextAlignment(.center)
                         .fixedSize(horizontal: false, vertical: true)
 
                     Text(
-                        "Have feedback, a bug report, or something that feels off? Send a note with system information by email, or join Discord for community discussion. Every report helps make VoiceInk more reliable and easier to use."
+                        "Have feedback, a bug report, or something that feels off? Send a note with system information by email, or join Discord for community discussion. Every report helps make Voicer more reliable and easier to use."
                     )
                     .font(.callout)
                     .foregroundStyle(.secondary)
