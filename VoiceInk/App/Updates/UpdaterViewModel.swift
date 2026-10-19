@@ -32,6 +32,13 @@ final class UpdaterViewModel: NSObject, ObservableObject, SPUUpdaterDelegate {
     override init() {
         let defaults = UserDefaults.standard
         self.defaults = defaults
+        #if LOCAL_BUILD
+            // A self-built copy never updates itself: upstream's releases are the licensed app and would replace it.
+            // The updater is never started, so it cannot check, and every entry point below finds nothing to do.
+            checksForUpdatesWhenDashboardAppears = false
+            super.init()
+            return
+        #endif
         checksForUpdatesWhenDashboardAppears = Self.initialAutomaticCheckPreference(in: defaults)
         super.init()
 
@@ -121,6 +128,9 @@ final class UpdaterViewModel: NSObject, ObservableObject, SPUUpdaterDelegate {
     }
 
     private func checkForUpdateInformationIfPossible() {
+        #if LOCAL_BUILD
+            return
+        #endif
         let updater = updaterController.updater
         guard !updater.sessionInProgress else { return }
         updater.checkForUpdateInformation()
