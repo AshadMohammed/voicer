@@ -39,8 +39,6 @@ struct DashboardContent: View {
     @State private var isAccessibilityEnabled = AXIsProcessTrusted()
     @EnvironmentObject private var updaterViewModel: UpdaterViewModel
     @ObservedObject private var modeManager = ModeManager.shared
-    @ObservedObject private var starPrompt = GitHubStarPromptCoordinator.shared
-    @State private var isSystemInfoCopied = false
     @State private var isEditingDisplayName = false
     @State private var displayNameDraft = ""
     @AppStorage("dashboardDisplayName") private var dashboardDisplayName: String = ""
@@ -642,34 +640,8 @@ struct DashboardContent: View {
         )
     }
 
-    @ViewBuilder
-    private var footerStarButtonLabel: some View {
-        if starPrompt.openFailed {
-            footerActionLabel(icon: "exclamationmark.triangle.fill", title: "Couldn't open — try again", color: .orange)
-        } else {
-            switch starPrompt.completionState {
-            case .starred:
-                footerActionLabel(icon: "checkmark", title: "Starred — thank you!", color: AppTheme.Sidebar.license)
-            case .opened:
-                footerActionLabel(icon: "arrow.up.right", title: "GitHub opened", color: AppTheme.Sidebar.fallback)
-            case .none:
-                footerActionLabel(icon: "star", title: "Star on GitHub", color: AppTheme.Sidebar.fallback)
-            }
-        }
-    }
-
     private var footerActionsView: some View {
         HStack(alignment: .center, spacing: 12) {
-            if starPrompt.showsFooterStarButton {
-                Button(action: { starPrompt.star() }) {
-                    footerStarButtonLabel
-                }
-                .buttonStyle(.plain)
-                .fixedSize(horizontal: true, vertical: true)
-                .disabled(starPrompt.isStarring || starPrompt.completionState != .none)
-                .animation(.easeInOut(duration: 0.15), value: starPrompt.openFailed)
-            }
-
             if let availableUpdate = updaterViewModel.availableUpdate {
                 Button(action: updaterViewModel.checkForUpdates) {
                     footerActionLabel(
@@ -692,17 +664,6 @@ struct DashboardContent: View {
                 .accessibilityHint("Opens the update window")
                 .transition(.move(edge: .trailing).combined(with: .opacity))
             }
-
-            Button(action: copySystemInfo) {
-                footerActionLabel(
-                    icon: isSystemInfoCopied ? "checkmark" : "doc.on.doc",
-                    title: isSystemInfoCopied ? "Copied!" : "Copy System Info",
-                    color: isSystemInfoCopied ? AppTheme.Sidebar.license : AppTheme.Sidebar.fallback
-                )
-            }
-            .buttonStyle(.plain)
-            .fixedSize(horizontal: true, vertical: true)
-            .animation(.spring(response: 0.3, dampingFraction: 0.7), value: isSystemInfoCopied)
         }
         .animation(.easeOut(duration: 0.2), value: updaterViewModel.availableUpdate)
     }
@@ -720,20 +681,6 @@ struct DashboardContent: View {
         .padding(.horizontal, 14)
         .frame(height: DashboardLayout.footerButtonHeight)
         .background(AppCardBackground(cornerRadius: 18))
-    }
-
-    private func copySystemInfo() {
-        SystemInfoService.shared.copySystemInfoToClipboard()
-
-        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-            isSystemInfoCopied = true
-        }
-
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                isSystemInfoCopied = false
-            }
-        }
     }
 
     private var displayNameBinding: Binding<String> {

@@ -76,15 +76,16 @@ private extension ViewType {
         .audio,
     ]
 
+    // The license page is left out: this build is always licensed.
     static let secondaryItems: [ViewType] = [
         .settings,
-        .license,
     ]
 
     static func assertSidebarItemsCoverAllCases() {
         #if DEBUG
             let sidebarItems = primaryItems + secondaryItems
-            assert(Set(sidebarItems) == Set(allCases) && sidebarItems.count == allCases.count)
+            let listedCases = allCases.filter { $0 != .license }
+            assert(Set(sidebarItems) == Set(listedCases) && sidebarItems.count == listedCases.count)
         #endif
     }
 
