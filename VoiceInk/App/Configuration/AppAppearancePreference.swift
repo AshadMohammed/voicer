@@ -22,9 +22,9 @@ enum AppAppearancePreference: String, CaseIterable, Hashable, Identifiable {
         }
     }
 
+    /// Voicer's cream design is light only, so the app always runs light whatever was saved.
     static var stored: AppAppearancePreference {
-        let rawValue = UserDefaults.standard.string(forKey: userDefaultsKey) ?? Self.system.rawValue
-        return AppAppearancePreference(rawValue: rawValue) ?? .system
+        .light
     }
 
     static func applyStored() {
@@ -68,10 +68,8 @@ enum AppAppearancePreference: String, CaseIterable, Hashable, Identifiable {
 }
 
 private struct PopoverAppAppearanceModifier: ViewModifier {
-    @AppStorage(AppAppearancePreference.userDefaultsKey) private var preference = AppAppearancePreference.system
-
     func body(content: Content) -> some View {
-        content.preferredColorScheme(preference.resolvedColorScheme)
+        content.preferredColorScheme(AppAppearancePreference.stored.resolvedColorScheme)
     }
 }
 

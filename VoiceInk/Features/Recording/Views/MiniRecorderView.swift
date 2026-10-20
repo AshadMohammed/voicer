@@ -38,6 +38,11 @@ struct MiniRecorderView<S: RecorderStateProvider & ObservableObject>: View {
             && (stateProvider.recordingState == .recording || stateProvider.recordingState == .starting)
     }
 
+    /// The cream pill, except while it shows the assistant or live text, which are styled for dark.
+    private var usesLightSurface: Bool {
+        !hasAssistantResponse && !hasLiveTranscript
+    }
+
     private var cornerRadius: CGFloat {
         hasLiveTranscript || hasAssistantResponse ? expandedCornerRadius : compactCornerRadius
     }
@@ -107,14 +112,20 @@ struct MiniRecorderView<S: RecorderStateProvider & ObservableObject>: View {
             controlBar
         }
         .frame(width: hasAssistantResponse ? assistantWidth : (hasLiveTranscript ? expandedWidth : compactWidth))
-        .background(Color.black)
+        .environment(\.recorderUsesLightSurface, usesLightSurface)
+        .background(usesLightSurface ? AppTheme.Palette.card : Color.black)
         .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                .strokeBorder(Color.orange, lineWidth: 2)
+                .strokeBorder(AppTheme.Palette.ink.opacity(usesLightSurface ? 0.10 : 0), lineWidth: 1)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                .strokeBorder(AppTheme.Palette.recording, lineWidth: 2)
                 .opacity(isLockedGlowing ? 1 : 0)
         )
-        .shadow(color: Color.orange.opacity(isLockedGlowing ? 0.8 : 0), radius: 12)
+        .shadow(color: AppTheme.Palette.ink.opacity(usesLightSurface && !isLockedGlowing ? 0.18 : 0), radius: 8, y: 3)
+        .shadow(color: AppTheme.Palette.recording.opacity(isLockedGlowing ? 0.8 : 0), radius: 12)
         .scaleEffect(lockBump ? 1.06 : 1, anchor: .bottom)
         .animation(.easeOut(duration: 0.18), value: isLockedGlowing)
         .onChange(of: isLockedGlowing) { _, locked in

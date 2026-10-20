@@ -21,9 +21,11 @@ struct QuickPanelScaffold<Content: View, Header: View, Footer: View>: View {
     private let header: Header
     private let footer: Footer?
     private let footerHeight: CGFloat
+    private let headerHeight: CGFloat
 
     init(
         footerHeight: CGFloat = QuickPanelMetrics.footerHeight,
+        headerHeight: CGFloat = QuickPanelMetrics.headerHeight,
         @ViewBuilder content: () -> Content,
         @ViewBuilder header: () -> Header,
         @ViewBuilder footer: () -> Footer
@@ -32,6 +34,7 @@ struct QuickPanelScaffold<Content: View, Header: View, Footer: View>: View {
         self.header = header()
         self.footer = footer()
         self.footerHeight = footerHeight
+        self.headerHeight = headerHeight
     }
 
     var body: some View {
@@ -39,7 +42,7 @@ struct QuickPanelScaffold<Content: View, Header: View, Footer: View>: View {
             content
 
             VStack(spacing: 0) {
-                QuickPanelScrollEdge(edge: .top) {
+                QuickPanelScrollEdge(edge: .top, contentHeight: headerHeight) {
                     header
                 }
 
@@ -65,6 +68,7 @@ extension QuickPanelScaffold where Footer == EmptyView {
         self.header = header()
         self.footer = nil
         self.footerHeight = QuickPanelMetrics.footerHeight
+        self.headerHeight = QuickPanelMetrics.headerHeight
     }
 }
 
@@ -82,13 +86,8 @@ struct QuickPanelScrollEdge<Content: View>: View {
 
     var body: some View {
         ZStack(alignment: edge == .top ? .top : .bottom) {
-            VisualEffectView(material: .hudWindow, blendingMode: .withinWindow)
+            AppTheme.Palette.paper
                 .mask(edgeMask)
-                .allowsHitTesting(false)
-
-            VisualEffectView(material: .hudWindow, blendingMode: .withinWindow)
-                .opacity(0.30)
-                .mask(emphasisMask)
                 .allowsHitTesting(false)
 
             content()

@@ -45,6 +45,8 @@ struct HistorySearchHeader<Accessory: View>: View {
 }
 
 struct HistoryList<Content: View>: View {
+    var topInset: CGFloat = HistoryLayout.listTopInset
+    var horizontalInset: CGFloat = HistoryLayout.listInset
     @ViewBuilder let content: () -> Content
 
     var body: some View {
@@ -52,8 +54,8 @@ struct HistoryList<Content: View>: View {
             LazyVStack(spacing: HistoryLayout.rowSpacing) {
                 content()
             }
-            .padding(.horizontal, HistoryLayout.listInset)
-            .padding(.top, HistoryLayout.listTopInset)
+            .padding(.horizontal, horizontalInset)
+            .padding(.top, topInset)
             .padding(.bottom, HistoryLayout.listBottomInset)
         }
         .scrollIndicators(.never)
@@ -96,12 +98,20 @@ struct HistoryCardBackground: View {
 }
 
 struct HistoryTranscriptionRow: View {
+    enum Style {
+        /// Its own card, with the mode icon and how long ago (quick history).
+        case card
+        /// A row inside a day's card, with the clock time on the left (History page).
+        case grouped
+    }
+
     let transcription: Transcription
     let isSelected: Bool
     let onSelect: () -> Void
     var onPaste: (() -> Void)? = nil
     var onToggleCheck: (() -> Void)? = nil
     var showsCopyButton = false
+    var style: Style = .card
 
     @State private var isHovered = false
 
@@ -129,23 +139,30 @@ struct HistoryTranscriptionRow: View {
                 )
             }
         }
-        .frame(height: 28)
-        .padding(.horizontal, HistoryLayout.rowHorizontalPadding)
-        .padding(.vertical, HistoryLayout.rowVerticalPadding)
-        .background {
-            DashboardInsightRowBackground()
+        .frame(minHeight: 28)
+        .padding(.horizontal, HistoryLayout.rowHorizontalPadding + 4)
+        .padding(.vertical, HistoryLayout.rowVerticalPadding + (style == .grouped ? 4 : 2))
+        .background { rowBackground }
+        .onHover { isHovered = $0 }
+    }
+
+    @ViewBuilder
+    private var rowBackground: some View {
+        if style == .grouped {
+            Rectangle()
+                .fill(isSelected ? AppTheme.Selection.fill : (isHovered ? Color.white.opacity(0.55) : .clear))
+        } else {
+            RoundedRectangle(cornerRadius: AppTheme.Radius.card, style: .continuous)
+                .fill(AppTheme.Palette.card)
                 .overlay {
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .fill(isSelected ? AppTheme.Selection.fill : (isHovered ? AppTheme.Insights.hover : .clear))
+                    RoundedRectangle(cornerRadius: AppTheme.Radius.card, style: .continuous)
+                        .fill(isSelected ? AppTheme.Selection.fill : (isHovered ? Color.white.opacity(0.55) : .clear))
                 }
                 .overlay {
-                    if isSelected {
-                        RoundedRectangle(cornerRadius: 10, style: .continuous)
-                            .strokeBorder(AppTheme.Selection.border, lineWidth: 1)
-                    }
+                    RoundedRectangle(cornerRadius: AppTheme.Radius.card, style: .continuous)
+                        .strokeBorder(isSelected ? AppTheme.Selection.border : AppTheme.Palette.line, lineWidth: 1)
                 }
         }
-        .onHover { isHovered = $0 }
     }
 
     @ViewBuilder
@@ -160,8 +177,14 @@ struct HistoryTranscriptionRow: View {
 
     private var selectionButton: some View {
         Button(action: onSelect) {
-            HStack(spacing: 12) {
-                if let icon = transcription.recordedHistoryModeIcon {
+            HStack(alignment: style == .grouped ? .firstTextBaseline : .center, spacing: 12) {
+                if style == .grouped {
+                    Text(transcription.timestamp, format: .dateTime.hour().minute())
+                        .font(.appNumber(12, weight: .regular))
+                        .foregroundStyle(AppTheme.Palette.muted)
+                        .lineLimit(1)
+                        .frame(width: 64, alignment: .leading)
+                } else if let icon = transcription.recordedHistoryModeIcon {
                     ModeIconView(
                         icon: icon,
                         size: icon.kind == .emoji ? 18 : 16,
@@ -171,17 +194,29 @@ struct HistoryTranscriptionRow: View {
                     .accessibilityHidden(true)
                 }
 
-                Text(transcription.preferredHistoryText)
-                    .font(.system(size: 13))
-                    .foregroundStyle(AppTheme.Text.primary)
-                    .lineLimit(1)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(transcription.preferredHistoryText)
+                        .font(.appSans(13.5))
+                        .foregroundStyle(AppTheme.Palette.ink)
+                        .lineSpacing(2)
+                        .lineLimit(2)
+                        .multilineTextAlignment(.leading)
+                        .frame(maxWidth: .infinity, alignment: .leading)
 
-                Text(transcription.timestamp, format: .relative(presentation: .named))
-                    .font(.system(size: 10))
-                    .foregroundStyle(AppTheme.Text.secondary)
-                    .lineLimit(1)
-                    .fixedSize(horizontal: true, vertical: false)
+                    Text(verbatim: transcription.historyDetailLine)
+                        .font(.appSans(11.5))
+                        .foregroundStyle(AppTheme.Palette.faint)
+                        .lineLimit(1)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+                if style == .card {
+                    Text(transcription.timestamp, format: .relative(presentation: .named))
+                        .font(.appNumber(11.5, weight: .regular))
+                        .foregroundStyle(AppTheme.Palette.muted)
+                        .lineLimit(1)
+                        .fixedSize(horizontal: true, vertical: false)
+                }
             }
             .frame(maxHeight: .infinity)
             .contentShape(Rectangle())
@@ -294,5 +329,21 @@ struct HistoryWindowDragArea: NSViewRepresentable {
         override func mouseDown(with event: NSEvent) {
             window?.performDrag(with: event)
         }
+    }
+}
+
+extension Transcription {
+    /// "0:14 · 34 words · Parakeet Ultra" under a history row.
+    var historyDetailLine: String {
+        let seconds = Int(duration.rounded())
+        let words = preferredHistoryText.split(whereSeparator: { $0.isWhitespace || $0.isNewline }).count
+        var parts = [
+            String(format: "%d:%02d", seconds / 60, seconds % 60),
+            "\(Formatters.formattedNumber(words)) \(words == 1 ? String(localized: "word") : String(localized: "words"))",
+        ]
+        if let model = transcriptionModelName, !model.isEmpty {
+            parts.append(model)
+        }
+        return parts.joined(separator: " · ")
     }
 }

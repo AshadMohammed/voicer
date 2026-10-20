@@ -21,10 +21,7 @@ struct QuickHistoryView: View {
             }
         }
         .frame(width: 680, height: 470)
-        .background {
-            VisualEffectView(material: .sidebar, blendingMode: .behindWindow)
-            AppTheme.Surface.window.opacity(0.50)
-        }
+        .background(AppTheme.Palette.paper)
         .clipShape(RoundedRectangle(cornerRadius: AppTheme.Radius.card, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: AppTheme.Radius.card, style: .continuous)

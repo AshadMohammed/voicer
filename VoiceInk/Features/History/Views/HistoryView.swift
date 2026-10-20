@@ -21,6 +21,7 @@ struct HistoryView: View {
     @State private var hasMoreContent = true
     @State private var paginationCursor: PaginationCursor?
     @State private var isViewCurrentlyVisible = false
+    @State private var totalCount: Int?
 
     private let exportService = VoiceInkCSVExportService()
     private let pageSize = 20
@@ -175,8 +176,11 @@ struct HistoryView: View {
         }
     }
 
+    // Matches the top of the Dashboard and Settings headers, plus room for the count line.
+    private static let pageHeaderHeight: CGFloat = 164
+
     private var historyContent: some View {
-        QuickPanelScaffold {
+        QuickPanelScaffold(headerHeight: Self.pageHeaderHeight) {
             if displayedTranscriptions.isEmpty && !isLoading {
                 HistoryEmptyState(
                     hasSearchQuery: !searchText.isEmpty,
@@ -186,10 +190,87 @@ struct HistoryView: View {
                 historyList
             }
         } header: {
-            searchHeader
+            pageHeader
         } footer: {
             selectionBar
         }
+    }
+
+    private var pageHeader: some View {
+        AppPageHeader(eyebrow: "Library", title: "History", subtitle: countLine) {
+            HStack(spacing: 8) {
+                HStack(spacing: 8) {
+                    Image(systemName: "magnifyingglass")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(AppTheme.Palette.faint)
+                    TextField("Search transcripts", text: $searchText)
+                        .textFieldStyle(.plain)
+                        .font(.appSans(13))
+                        .focused($isSearchFocused)
+                    if isLoading {
+                        ProgressView()
+                            .controlSize(.mini)
+                    }
+                }
+                .padding(.horizontal, 12)
+                .frame(width: 240, height: 34)
+                .appSurfaceCard(cornerRadius: 9)
+
+                HistoryIconButton(systemName: "gearshape", help: "History settings") {
+                    activePanel = .settings
+                }
+            }
+        }
+        .padding(.horizontal, 40)
+        .padding(.top, 64)
+        .frame(height: Self.pageHeaderHeight, alignment: .top)
+    }
+
+    private var countLine: LocalizedStringKey? {
+        guard let totalCount else { return nil }
+        return totalCount == 1
+            ? "1 recording, kept on this Mac."
+            : "\(Formatters.formattedNumber(totalCount)) recordings, kept on this Mac."
+    }
+
+    private struct DaySection: Identifiable {
+        let id: Date
+        let title: String
+        let items: [Transcription]
+    }
+
+    /// Consecutive transcriptions from the same calendar day, newest first: "Today", "Yesterday", then the date.
+    private var daySections: [DaySection] {
+        let calendar = Calendar.current
+        var sections: [DaySection] = []
+        var currentDay: Date?
+        var currentItems: [Transcription] = []
+
+        func close() {
+            guard let day = currentDay, !currentItems.isEmpty else { return }
+            sections.append(DaySection(id: day, title: Self.dayTitle(for: day, calendar: calendar), items: currentItems))
+        }
+
+        for transcription in displayedTranscriptions {
+            let day = calendar.startOfDay(for: transcription.timestamp)
+            if day != currentDay {
+                close()
+                currentDay = day
+                currentItems = []
+            }
+            currentItems.append(transcription)
+        }
+        close()
+        return sections
+    }
+
+    private static func dayTitle(for day: Date, calendar: Calendar) -> String {
+        if calendar.isDateInToday(day) { return String(localized: "Today") }
+        if calendar.isDateInYesterday(day) { return String(localized: "Yesterday") }
+        let sameYear = calendar.isDate(day, equalTo: Date(), toGranularity: .year)
+        return sameYear
+            ? day.formatted(.dateTime.weekday(.wide).day().month(.wide))
+            : day.formatted(.dateTime.day().month(.wide).year())
     }
 
     // MARK: - Search Header
@@ -251,16 +332,34 @@ struct HistoryView: View {
     // MARK: - History List
 
     private var historyList: some View {
-        HistoryList {
-            ForEach(displayedTranscriptions) { transcription in
-                HistoryTranscriptionRow(
-                    transcription: transcription,
-                    isSelected: selectedTranscriptions.contains(transcription),
-                    onSelect: { openDetail(transcription) },
-                    onToggleCheck: { toggleSelection(transcription) },
-                    showsCopyButton: true
-                )
-                .id(transcription.id)
+        HistoryList(topInset: Self.pageHeaderHeight + 20, horizontalInset: 40) {
+            ForEach(daySections) { section in
+                VStack(alignment: .leading, spacing: 8) {
+                    AppSectionLabel(verbatim: section.title)
+                        .padding(.leading, 2)
+
+                    VStack(spacing: 0) {
+                        ForEach(Array(section.items.enumerated()), id: \.element.id) { index, transcription in
+                            if index > 0 {
+                                Rectangle()
+                                    .fill(AppTheme.Palette.line)
+                                    .frame(height: 1)
+                            }
+                            HistoryTranscriptionRow(
+                                transcription: transcription,
+                                isSelected: selectedTranscriptions.contains(transcription),
+                                onSelect: { openDetail(transcription) },
+                                onToggleCheck: { toggleSelection(transcription) },
+                                showsCopyButton: true,
+                                style: .grouped
+                            )
+                            .id(transcription.id)
+                        }
+                    }
+                    .clipShape(RoundedRectangle(cornerRadius: AppTheme.Radius.card, style: .continuous))
+                    .appSurfaceCard()
+                }
+                .padding(.bottom, 10)
             }
 
             if hasMoreContent {
@@ -301,6 +400,7 @@ struct HistoryView: View {
         do {
             paginationCursor = nil
             let items = try modelContext.fetch(cursorQueryDescriptor())
+            totalCount = try? modelContext.fetchCount(FetchDescriptor<Transcription>())
             let page = Array(items.prefix(pageSize))
             displayedTranscriptions = page
             paginationCursor = page.last.map { PaginationCursor(timestamp: $0.timestamp, id: $0.id) }

@@ -33,6 +33,16 @@ struct SettingsView: View {
     @State private var isRestoreClipboardExpanded = false
 
     var body: some View {
+        VStack(spacing: 0) {
+            AppPageHeader(eyebrow: "Preferences", title: "Settings")
+                .padding(.horizontal, 40)
+                .padding(.top, 40)
+                .padding(.bottom, 4)
+            settingsForm
+        }
+    }
+
+    private var settingsForm: some View {
         Form {
             Section {
                 LabeledContent("Primary Shortcut") {
@@ -76,12 +86,12 @@ struct SettingsView: View {
 
             } header: {
                 HStack(spacing: 4) {
-                    Text("Shortcuts")
+                    AppSectionLabel("Shortcuts")
                     InfoTip("Supports keyboard combinations and mouse buttons.")
                 }
             }
 
-            Section("Additional Shortcuts") {
+            Section(header: AppSectionLabel("Additional Shortcuts")) {
                 LabeledContent("Paste Last Transcription (Original)") {
                     ShortcutRecorder(action: .pasteLastTranscription) {
                         recordingShortcutManager.updateShortcutStatus()
@@ -133,7 +143,7 @@ struct SettingsView: View {
 
             }
 
-            Section("Pasting") {
+            Section(header: AppSectionLabel("Pasting")) {
                 Picker(selection: $finishAndSendKey) {
                     ForEach(FinishAndSendKey.allCases, id: \.self) { key in
                         Text(key.displayName).tag(key.rawValue)
@@ -185,17 +195,7 @@ struct SettingsView: View {
                 }
             }
 
-            Section("Interface") {
-                Picker("Appearance", selection: $appAppearancePreference) {
-                    ForEach(AppAppearancePreference.allCases) { preference in
-                        Text(preference.displayName).tag(preference)
-                    }
-                }
-                .pickerStyle(.menu)
-                .onChange(of: appAppearancePreference) { _, newValue in
-                    newValue.apply()
-                }
-
+            Section(header: AppSectionLabel("Interface")) {
                 Picker("Language", selection: $appLanguagePreference) {
                     ForEach(AppLanguagePreference.availableOptions) { option in
                         Text(option.displayName).tag(option.id)
@@ -228,7 +228,7 @@ struct SettingsView: View {
                 }
             }
 
-            Section("General") {
+            Section(header: AppSectionLabel("General")) {
                 Toggle("Hide Dock Icon", isOn: $menuBarManager.isMenuBarOnly)
 
                 Toggle(
@@ -294,17 +294,19 @@ struct SettingsView: View {
                     .disabled(isImportingSettings)
                 }
             } header: {
-                Text("Backup")
+                AppSectionLabel("Backup")
             } footer: {
                 Text("Export all settings, or choose specific categories when importing a backup.")
             }
 
-            Section("Diagnostics") {
+            Section(header: AppSectionLabel("Diagnostics")) {
                 DiagnosticsSettingsView()
             }
         }
         .formStyle(.grouped)
         .scrollContentBackground(.hidden)
+        // The grouped form keeps its own 20pt margin; this lines its cards up with the page title, like other screens.
+        .padding(.horizontal, 20)
         .alert("Reset Onboarding", isPresented: $showResetOnboardingAlert) {
             Button("Cancel", role: .cancel) {}
             Button("Reset", role: .destructive) {

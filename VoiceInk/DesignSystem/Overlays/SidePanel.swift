@@ -61,10 +61,7 @@ struct SidePanel<PanelContent: View>: ViewModifier {
 
 struct SidePanelBackground: View {
     var body: some View {
-        ZStack {
-            VisualEffectView(material: .sidebar, blendingMode: .behindWindow)
-            AppTheme.Surface.sidePanelOverlay
-        }
+        AppTheme.Palette.paper
     }
 }
 

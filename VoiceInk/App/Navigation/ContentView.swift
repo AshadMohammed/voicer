@@ -37,7 +37,6 @@ final class MainWindowNavigation: ObservableObject {
 
 struct ContentView: View {
     private let logger = Logger(subsystem: "com.prakashjoshipax.voiceink", category: "ContentView")
-    private static let detailBackgroundTintOpacity = 0.50
     @EnvironmentObject private var navigation: MainWindowNavigation
 
     var body: some View {
@@ -46,6 +45,9 @@ struct ContentView: View {
 
             detailContent
         }
+        .font(.body)
+        .foregroundStyle(AppTheme.Palette.ink)
+        .tint(AppTheme.Palette.accent)
         .frame(width: AppWindowLayout.width)
         .frame(minHeight: AppWindowLayout.minimumHeight)
         .onAppear {
@@ -70,16 +72,8 @@ struct ContentView: View {
     }
 
     private var detailBackground: some View {
-        ZStack {
-            VisualEffectView(
-                material: .sidebar,
-                blendingMode: .behindWindow
-            )
-
-            AppTheme.Surface.window
-                .opacity(Self.detailBackgroundTintOpacity)
-        }
-        .ignoresSafeArea(.container, edges: .top)
+        AppPaperBackground()
+            .ignoresSafeArea(.container, edges: .top)
     }
 
     @ViewBuilder

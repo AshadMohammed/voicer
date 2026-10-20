@@ -1,8 +1,36 @@
 import SwiftUI
 
 enum AppTheme {
+    /// Voicer's light palette, shared with the Fin dashboard: cream paper, ink, warm tan, and orange as the accent.
+    enum Palette {
+        static let paper = rgb(0xF5F0E8)
+        static let paperDeep = rgb(0xEDE7DB)
+        static let card = rgb(0xFAF7F2)
+        static let ink = rgb(0x2C2C2C)
+        static let inkSoft = rgb(0x4A4A4A)
+        static let muted = rgb(0x8B8178)
+        static let faint = rgb(0xB5AFA6)
+        static let tan = rgb(0xC4A882)
+        static let olive = rgb(0x4A6741)
+        static let line = Color(.sRGB, red: 44 / 255, green: 44 / 255, blue: 44 / 255, opacity: 0.08)
+        static let lineStrong = Color(.sRGB, red: 44 / 255, green: 44 / 255, blue: 44 / 255, opacity: 0.14)
+        static let accent = rgb(0xD9690B)
+        /// The recorder's lock glow and live dot.
+        static let recording = rgb(0xFF9500)
+        static let dotGrid = Color(.sRGB, red: 74 / 255, green: 103 / 255, blue: 65 / 255, opacity: 0.11)
+
+        static func rgb(_ hex: UInt32) -> Color {
+            Color(
+                .sRGB,
+                red: Double((hex >> 16) & 0xFF) / 255,
+                green: Double((hex >> 8) & 0xFF) / 255,
+                blue: Double(hex & 0xFF) / 255
+            )
+        }
+    }
+
     enum Accent {
-        static let primary = Color.accentColor
+        static let primary = Palette.accent
         static let fillSubtle = primary.opacity(0.10)
         static let fill = primary.opacity(0.14)
         static let fillStrong = primary.opacity(0.28)
@@ -14,28 +42,29 @@ enum AppTheme {
     }
 
     enum Surface {
-        static let card = Color.secondary.opacity(0.10)
-        static let materialCard = Color(nsColor: .controlBackgroundColor).opacity(0.50)
-        static let subtle = Color.primary.opacity(0.06)
-        static let controlActive = Color.secondary.opacity(0.14)
-        static let control = Color(nsColor: .controlBackgroundColor)
-        static let window = Color(nsColor: .windowBackgroundColor)
-        static let sidePanelOverlay = Color(nsColor: .windowBackgroundColor).opacity(0.50)
+        static let card = Palette.card
+        static let materialCard = Palette.card
+        static let subtle = Palette.ink.opacity(0.05)
+        static let controlActive = Palette.ink.opacity(0.08)
+        static let control = Color.white
+        static let window = Palette.paper
+        static let sidebar = Palette.paperDeep
+        static let sidePanelOverlay = Palette.paper.opacity(0.60)
         static let clear = Color.clear
     }
 
     enum Border {
-        static let subtle = Color(nsColor: .separatorColor).opacity(0.28)
-        static let card = Color(nsColor: .separatorColor).opacity(0.35)
-        static let control = Color(nsColor: .separatorColor)
-        static let tint = Color.primary.opacity(0.12)
-        static let sidePanelOuter = Color.white.opacity(0.12)
+        static let subtle = Palette.line
+        static let card = Palette.line
+        static let control = Palette.lineStrong
+        static let tint = Palette.line
+        static let sidePanelOuter = Palette.line
     }
 
     enum Selection {
-        static let fill = Color.primary.opacity(0.10)
-        static let border = Color.primary.opacity(0.14)
-        static let foreground = Color.primary.opacity(0.78)
+        static let fill = Palette.accent.opacity(0.10)
+        static let border = Palette.accent.opacity(0.35)
+        static let foreground = Palette.ink
     }
 
     enum Status {
@@ -49,50 +78,36 @@ enum AppTheme {
     }
 
     enum Data {
-        static let transcript = Color.indigo
-        static let audio = Color.teal
-        static let enhancement = Color.mint
+        static let transcript = Palette.accent
+        static let audio = Palette.tan
+        static let enhancement = Palette.olive
         static let purple = Color(nsColor: .systemPurple)
         static let yellow = Color(nsColor: .systemYellow)
         static let orange = Color(nsColor: .systemOrange)
     }
 
     enum Insights {
-        static let page = neutral(light: 0.995, dark: 0.065)
-        static let card = neutral(light: 0.955, dark: 0.105)
-        static let elevated = neutral(light: 1.0, dark: 0.145)
-        static let hover = Color.primary.opacity(0.045)
+        static let page = Palette.paper
+        static let card = Palette.card
+        static let elevated = Color.white
+        static let hover = Palette.ink.opacity(0.045)
         static let border = AppTheme.Border.tint
-        static let productivity = Color(nsColor: .systemBlue)
-        static let activity = Color(nsColor: .systemTeal)
+        static let productivity = Palette.accent
+        static let activity = Palette.tan
         static let selection = productivity.opacity(0.12)
-        static let selectionText = dynamic(
-            light: NSColor(srgbRed: 0.10, green: 0.32, blue: 0.66, alpha: 1),
-            dark: NSColor(srgbRed: 0.42, green: 0.68, blue: 1.0, alpha: 1)
-        )
-        static let grid = Color.primary.opacity(0.075)
-
-        private static func neutral(light: CGFloat, dark: CGFloat) -> Color {
-            dynamic(light: NSColor(white: light, alpha: 1), dark: NSColor(white: dark, alpha: 1))
-        }
-
-        private static func dynamic(light: NSColor, dark: NSColor) -> Color {
-            Color(nsColor: NSColor(name: nil) { appearance in
-                let isDark = appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
-                return isDark ? dark : light
-            })
-        }
+        static let selectionText = Palette.accent
+        static let grid = Palette.ink.opacity(0.075)
     }
 
     enum Sidebar {
-        static let dashboard = Color(nsColor: .systemOrange)
-        static let modes = Color(nsColor: .systemIndigo)
-        static let models = Color(nsColor: .systemBrown)
-        static let audio = Color(nsColor: .systemPink)
-        static let dictionary = Color(nsColor: .systemBlue)
-        static let transcribeAudio = Color(red: 0.86, green: 0.32, blue: 0.27)
-        static let fallback = Color(nsColor: .systemGray)
-        static let license = Color(nsColor: .systemGreen)
+        static let dashboard = Palette.accent
+        static let modes = Palette.accent
+        static let models = Palette.accent
+        static let audio = Palette.accent
+        static let dictionary = Palette.accent
+        static let transcribeAudio = Palette.accent
+        static let fallback = Palette.muted
+        static let license = Palette.olive
     }
 
     enum Waveform {
@@ -105,11 +120,11 @@ enum AppTheme {
     }
 
     enum Text {
-        static let primary = Color(nsColor: .labelColor)
-        static let secondary = Color(nsColor: .secondaryLabelColor)
-        static let muted = secondary.opacity(0.70)
-        static let disabled = Color(nsColor: .disabledControlTextColor)
-        static let onAccent = Color(nsColor: .alternateSelectedControlTextColor)
+        static let primary = Palette.ink
+        static let secondary = Palette.muted
+        static let muted = Palette.faint
+        static let disabled = Palette.faint
+        static let onAccent = Color.white
     }
 
     enum NativeText {

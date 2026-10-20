@@ -4,22 +4,37 @@ struct DashboardTranscriptCards: View {
     let transcriptions: [Transcription]
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text("Recent Transcripts")
-                .font(.system(size: 18, weight: .bold, design: .rounded))
-                .foregroundStyle(AppTheme.Text.primary)
-                .lineLimit(1)
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .firstTextBaseline) {
+                Text("Recent")
+                    .font(.appSerif(21))
+                    .foregroundStyle(AppTheme.Palette.ink)
+                Spacer()
+                Button("All history") {
+                    NotificationCenter.default.post(
+                        name: .navigateToDestination,
+                        object: nil,
+                        userInfo: ["destination": "History"]
+                    )
+                }
+                .buttonStyle(.plain)
+                .font(.appSans(13, weight: .medium))
+                .foregroundStyle(AppTheme.Palette.accent)
+            }
 
             VStack(spacing: 0) {
                 ForEach(Array(transcriptions.enumerated()), id: \.element.id) { index, transcription in
                     DashboardTranscriptCardRow(transcription: transcription)
 
                     if index < transcriptions.count - 1 {
-                        Divider()
-                            .padding(.horizontal, 8)
+                        Rectangle()
+                            .fill(AppTheme.Palette.line)
+                            .frame(height: 1)
                     }
                 }
             }
+            .clipShape(RoundedRectangle(cornerRadius: AppTheme.Radius.card, style: .continuous))
+            .appSurfaceCard()
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -58,6 +73,21 @@ private struct DashboardTranscriptCardRow: View {
         transcription.timestamp.formatted(.relative(presentation: .named))
     }
 
+    private var shortTimeText: String {
+        let elapsed = Date().timeIntervalSince(transcription.timestamp)
+        if elapsed < 60 { return String(localized: "Just now") }
+        if elapsed < 3600 { return String(localized: "\(Int(elapsed / 60)) min") }
+        if elapsed < 86_400 { return String(localized: "\(Int(elapsed / 3600)) hr") }
+        return transcription.timestamp.formatted(.dateTime.day().month(.abbreviated))
+    }
+
+    private var detailText: String {
+        let words = copyText.split(whereSeparator: { $0.isWhitespace || $0.isNewline }).count
+        let seconds = Int(transcription.duration.rounded())
+        let duration = String(format: "%d:%02d", seconds / 60, seconds % 60)
+        return "\(duration) · \(Formatters.formattedNumber(words)) \(words == 1 ? String(localized: "word") : String(localized: "words"))"
+    }
+
     private var modeIcon: ModeIcon {
         guard let iconValue = transcription.modeEmoji?.trimmingCharacters(in: .whitespacesAndNewlines),
             !iconValue.isEmpty
@@ -76,8 +106,10 @@ private struct DashboardTranscriptCardRow: View {
         ZStack(alignment: .topTrailing) {
             rowContent
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.vertical, 10)
-                .padding(.horizontal, 8)
+                .padding(.vertical, 13)
+                .padding(.leading, 16)
+                .padding(.trailing, 44)
+                .background(isHovering ? Color.white.opacity(0.5) : Color.clear)
                 .contentShape(Rectangle())
                 .onTapGesture {
                     isExpanded.toggle()
@@ -103,27 +135,24 @@ private struct DashboardTranscriptCardRow: View {
     }
 
     private var rowContent: some View {
-        HStack(alignment: .top, spacing: Self.rowSpacing) {
-            ModeIconView(
-                icon: modeIcon,
-                size: modeIcon.kind == .emoji ? 16 : 14,
-                color: AppTheme.Text.secondary.opacity(0.82)
-            )
-            .frame(width: Self.iconFrameSize, height: Self.iconFrameSize)
-            .padding(.top, 3)
+        HStack(alignment: .top, spacing: 14) {
+            Text(verbatim: shortTimeText)
+                .font(.appNumber(12, weight: .regular))
+                .foregroundStyle(AppTheme.Palette.muted)
+                .frame(width: 60, alignment: .leading)
+                .padding(.top, 2)
 
-            VStack(alignment: .leading, spacing: 5) {
-                Text(metadataText)
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(AppTheme.Text.secondary)
-                    .lineLimit(1)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-
+            VStack(alignment: .leading, spacing: 4) {
                 Text(isExpanded ? copyText : previewText)
-                    .font(.system(size: 13, weight: .regular))
-                    .foregroundStyle(AppTheme.Text.primary)
+                    .font(.appSans(13.5))
+                    .foregroundStyle(AppTheme.Palette.ink)
+                    .lineSpacing(2)
                     .lineLimit(isExpanded ? nil : 2)
                     .frame(maxWidth: .infinity, alignment: .leading)
+
+                Text(verbatim: detailText)
+                    .font(.appSans(11.5))
+                    .foregroundStyle(AppTheme.Palette.faint)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .layoutPriority(1)

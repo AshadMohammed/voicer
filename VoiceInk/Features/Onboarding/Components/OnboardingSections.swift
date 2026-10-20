@@ -2,11 +2,8 @@ import SwiftUI
 
 struct OnboardingBackground: View {
     var body: some View {
-        VisualEffectView(
-            material: .sidebar,
-            blendingMode: .behindWindow
-        )
-        .ignoresSafeArea()
+        AppPaperBackground()
+            .ignoresSafeArea()
     }
 }
 

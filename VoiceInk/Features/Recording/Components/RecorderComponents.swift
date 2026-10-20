@@ -1,8 +1,27 @@
 import SwiftUI
 
+// MARK: - Light or Dark Surface
+
+private struct RecorderUsesLightSurfaceKey: EnvironmentKey {
+    static let defaultValue = false
+}
+
+extension EnvironmentValues {
+    /// True when the recorder sits on Voicer's cream pill, so its marks draw in ink rather than white.
+    var recorderUsesLightSurface: Bool {
+        get { self[RecorderUsesLightSurfaceKey.self] }
+        set { self[RecorderUsesLightSurfaceKey.self] = newValue }
+    }
+
+    var recorderForeground: Color {
+        recorderUsesLightSurface ? AppTheme.Palette.ink : .white
+    }
+}
+
 // MARK: - Icon Toggle Button
 
 struct RecorderToggleButton: View {
+    @Environment(\.recorderForeground) private var foreground
     let isEnabled: Bool
     let icon: String
     let disabled: Bool
@@ -28,7 +47,7 @@ struct RecorderToggleButton: View {
                     Image(systemName: icon).font(.system(size: 13))
                 }
             }
-            .foregroundColor(disabled ? .white.opacity(0.3) : (isEnabled ? .white : .white.opacity(0.6)))
+            .foregroundColor(disabled ? foreground.opacity(0.3) : (isEnabled ? foreground : foreground.opacity(0.6)))
         }
         .buttonStyle(PlainButtonStyle())
         .disabled(disabled)
@@ -38,6 +57,7 @@ struct RecorderToggleButton: View {
 // MARK: - Record Button
 
 struct RecorderRecordButton: View {
+    @Environment(\.recorderUsesLightSurface) private var usesLightSurface
     let recordingState: RecordingState
     let action: () -> Void
 
@@ -89,6 +109,12 @@ struct RecorderRecordButton: View {
 
     private var colors: StateColors {
         switch visualState {
+        case .ready where usesLightSurface:
+            return StateColors(
+                surface: AppTheme.Palette.ink.opacity(0.06),
+                border: AppTheme.Palette.ink.opacity(0.10),
+                mark: AppTheme.Palette.ink.opacity(0.45)
+            )
         case .ready:
             return StateColors(
                 surface: Color(red: 0.30, green: 0.30, blue: 0.32),
@@ -101,6 +127,12 @@ struct RecorderRecordButton: View {
                 surface: red.opacity(0.92),
                 border: red.opacity(0.98),
                 mark: .white
+            )
+        case .processing where usesLightSurface:
+            return StateColors(
+                surface: AppTheme.Palette.ink.opacity(0.06),
+                border: AppTheme.Palette.ink.opacity(0.10),
+                mark: AppTheme.Palette.ink.opacity(0.75)
             )
         case .processing:
             return StateColors(
@@ -156,21 +188,22 @@ struct RecorderRecordButton: View {
 // MARK: - Close Button
 
 struct RecorderCloseButton: View {
+    @Environment(\.recorderForeground) private var foreground
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
             ZStack {
                 Circle()
-                    .fill(Color.white.opacity(0.13))
+                    .fill(foreground.opacity(0.13))
                     .overlay(
                         Circle()
-                            .strokeBorder(Color.white.opacity(0.18), lineWidth: 0.6)
+                            .strokeBorder(foreground.opacity(0.18), lineWidth: 0.6)
                     )
 
                 Image(systemName: "xmark")
                     .font(.system(size: 9, weight: .semibold))
-                    .foregroundColor(.white.opacity(0.86))
+                    .foregroundColor(foreground.opacity(0.86))
             }
             .frame(width: 21, height: 21)
             .contentShape(Circle())
@@ -339,6 +372,7 @@ struct LiveTranscriptView: View {
 // MARK: - Recorder Status Display
 
 struct RecorderStatusDisplay: View {
+    @Environment(\.recorderForeground) private var foreground
     let currentState: RecordingState
     let audioMeterProvider: () -> AudioMeter
     let menuBarHeight: CGFloat?
@@ -356,19 +390,19 @@ struct RecorderStatusDisplay: View {
     var body: some View {
         Group {
             if currentState == .enhancing {
-                ProcessingStatusDisplay(mode: .enhancing, color: .white).transition(.opacity)
+                ProcessingStatusDisplay(mode: .enhancing, color: foreground).transition(.opacity)
             } else if currentState == .transcribing {
-                ProcessingStatusDisplay(mode: .transcribing, color: .white).transition(.opacity)
+                ProcessingStatusDisplay(mode: .transcribing, color: foreground).transition(.opacity)
             } else if currentState == .recording {
                 AudioVisualizer(
                     audioMeterProvider: audioMeterProvider,
-                    color: .white,
+                    color: foreground,
                     isActive: true
                 )
                     .scaleEffect(y: menuBarHeight != nil ? min(1.0, (menuBarHeight! - 8) / 25) : 1.0, anchor: .center)
                     .transition(.opacity)
             } else {
-                StaticVisualizer(color: .white)
+                StaticVisualizer(color: foreground)
                     .scaleEffect(y: menuBarHeight != nil ? min(1.0, (menuBarHeight! - 8) / 25) : 1.0, anchor: .center)
                     .transition(.opacity)
             }

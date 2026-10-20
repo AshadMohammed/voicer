@@ -6,7 +6,7 @@ import os
 struct DashboardContent: View {
     private let logger = Logger(subsystem: "com.prakashjoshipax.voiceink", category: "DashboardContent")
     private static let fallbackDisplayName = String(localized: "there")
-    private static let displayNameFontSize: CGFloat = 28
+    private static let displayNameFontSize: CGFloat = 34
     private static let displayNameFontWeight: NSFont.Weight = .bold
     private static let displayNameMinWidth: CGFloat = 72
     private static let displayNameMaxWidth: CGFloat = 280
@@ -38,6 +38,7 @@ struct DashboardContent: View {
     @State private var selectedInsightPeriod: DashboardInsightPeriod = .allTime
     @State private var isAccessibilityEnabled = AXIsProcessTrusted()
     @EnvironmentObject private var updaterViewModel: UpdaterViewModel
+    @EnvironmentObject private var recordingShortcutManager: RecordingShortcutManager
     @ObservedObject private var modeManager = ModeManager.shared
     @State private var isEditingDisplayName = false
     @State private var displayNameDraft = ""
@@ -236,7 +237,7 @@ struct DashboardContent: View {
             greetingHeader
 
             nameEditorDismissArea {
-                heroSection
+                overviewSection
             }
 
             if !isAccessibilityEnabled {
@@ -368,37 +369,145 @@ struct DashboardContent: View {
     }
 
     private var greetingHeader: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text(greetingEmoji)
-                    .font(.system(size: 25))
-                    .accessibilityHidden(true)
+        HStack(alignment: .bottom, spacing: 16) {
+            VStack(alignment: .leading, spacing: 6) {
+                AppSectionLabel("Overview")
 
-                Text("\(greetingText),")
-                    .font(displayNameFont)
-                    .foregroundStyle(AppTheme.Text.primary)
-                    .onTapGesture(perform: dismissDisplayNameEditorIfNeeded)
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text("\(greetingText),")
+                        .font(displayNameFont)
+                        .foregroundStyle(AppTheme.Text.primary)
+                        .onTapGesture(perform: dismissDisplayNameEditorIfNeeded)
 
-                displayNameView
+                    displayNameView
 
-                dismissingSpacer
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .lineLimit(1)
-            .minimumScaleFactor(0.72)
+                    dismissingSpacer
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .lineLimit(1)
+                .minimumScaleFactor(0.72)
 
-            HStack(alignment: .top, spacing: 0) {
                 Text(headerSubtitle)
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(AppTheme.Text.secondary)
+                    .font(.appSans(13.5))
+                    .foregroundStyle(AppTheme.Palette.muted)
                     .lineLimit(2)
-
-                Spacer(minLength: 0)
+                    .padding(.top, 2)
+                    .contentShape(Rectangle())
+                    .onTapGesture(perform: dismissDisplayNameEditorIfNeeded)
             }
-            .contentShape(Rectangle())
-            .onTapGesture(perform: dismissDisplayNameEditorIfNeeded)
+
+            HStack(spacing: 8) {
+                if let reviewCount = dashboardReviewCorrectionCount {
+                    Button(action: openAutoLearnReviewPanel) {
+                        Text(verbatim: String(localized: "Review \(Formatters.formattedNumber(reviewCount)) corrections"))
+                    }
+                    .buttonStyle(DashboardQuietButtonStyle())
+                }
+
+                Button(action: openInsightsIfAvailable) {
+                    HStack(spacing: 6) {
+                        if !canViewInsights {
+                            Image(systemName: "lock")
+                                .font(.system(size: 11, weight: .medium))
+                        }
+                        Text(canViewInsights ? "View insights" : "Insights locked")
+                    }
+                }
+                .buttonStyle(DashboardQuietButtonStyle())
+                .disabled(!canViewInsights)
+                .help(insightsActionHelp)
+                .accessibilityLabel(insightsActionAccessibilityLabel)
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.bottom, 4)
+    }
+
+    private var overviewSection: some View {
+        VStack(spacing: 12) {
+            HStack(spacing: 12) {
+                DashboardStatCard(
+                    title: "Time saved",
+                    value: hasLoadedStatsSnapshot ? formattedAllTimeSaved : "–",
+                    detail: weekTimeSavedDetail,
+                    isHighlighted: true,
+                    detailIsPositive: weekTimeSaved >= 60
+                )
+                DashboardStatCard(
+                    title: "Words",
+                    value: hasLoadedStatsSnapshot ? Formatters.formattedCompactNumber(statsSummary.totalWords) : "–",
+                    detail: statsSummary.todayWords > 0
+                        ? String(localized: "\(Formatters.formattedNumber(statsSummary.todayWords)) words today")
+                        : String(localized: "None yet today")
+                )
+                DashboardStatCard(
+                    title: "Dictations",
+                    value: hasLoadedStatsSnapshot ? Formatters.formattedNumber(statsSummary.totalCount) : "–",
+                    detail: statsSummary.todayCount > 0
+                        ? String(localized: "\(Formatters.formattedNumber(statsSummary.todayCount)) today")
+                        : String(localized: "None yet today")
+                )
+                DashboardStatCard(
+                    title: "Pace",
+                    value: wordsPerMinute.map { "\($0)" } ?? "–",
+                    unit: "wpm",
+                    detail: paceDetail
+                )
+            }
+
+            HStack(alignment: .top, spacing: 12) {
+                DashboardWeekBarsCard(points: statsSummary.dailyActivity(for: .lastSevenDays))
+                    .frame(maxWidth: .infinity)
+                DashboardShortcutsCard(primaryMode: recordingShortcutManager.primaryRecordingShortcutMode)
+                    .frame(width: 290)
+            }
+            .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private var weekTimeSaved: TimeInterval {
+        let week = statsSummary.totals(for: .lastSevenDays)
+        return DashboardTimeSaving.timeSaved(words: week.words, duration: week.duration)
+    }
+
+    private var weekTimeSavedDetail: String {
+        guard hasLoadedStatsSnapshot, weekTimeSaved >= 60 else {
+            return String(localized: "Nothing yet this week")
+        }
+        return String(localized: "+\(Formatters.formattedSavedTime(weekTimeSaved)) this week")
+    }
+
+    /// Words per minute of speech, across everything dictated.
+    private var wordsPerMinute: Int? {
+        guard hasLoadedStatsSnapshot, statsSummary.totalDuration >= 60 else { return nil }
+        return Int((Double(statsSummary.totalWords) / (statsSummary.totalDuration / 60)).rounded())
+    }
+
+    private var paceDetail: String {
+        guard let wordsPerMinute else { return String(localized: "Talk for a minute to see it") }
+        let ratio = Double(wordsPerMinute) / DashboardTimeSaving.typingWordsPerMinute
+        return String(localized: "\(ratio.formatted(.number.precision(.fractionLength(1))))× typing speed")
+    }
+
+    /// Consecutive days with at least one dictation, ending today or yesterday.
+    private var dayStreak: Int {
+        let calendar = Calendar.current
+        let activeDays = Set(
+            statsSummary.dailyActivity(for: .lastThirtyDays)
+                .filter { $0.words > 0 }
+                .map { calendar.startOfDay(for: $0.date) }
+        )
+        var day = calendar.startOfDay(for: Date())
+        if !activeDays.contains(day) {
+            day = calendar.date(byAdding: .day, value: -1, to: day) ?? day
+        }
+        var streak = 0
+        while activeDays.contains(day) {
+            streak += 1
+            guard let previous = calendar.date(byAdding: .day, value: -1, to: day) else { break }
+            day = previous
+        }
+        return streak
     }
 
     @ViewBuilder
@@ -437,7 +546,7 @@ struct DashboardContent: View {
     }
 
     private var displayNameFont: Font {
-        .system(size: Self.displayNameFontSize, weight: .bold, design: .rounded)
+        .appSerif(Self.displayNameFontSize)
     }
 
     private var dismissingSpacer: some View {
@@ -698,7 +807,8 @@ struct DashboardContent: View {
         let name = isEditingDisplayName ? displayNameDraft : defaultedDisplayName
         let measuredWidth = (name as NSString).size(
             withAttributes: [
-                .font: NSFont.systemFont(ofSize: Self.displayNameFontSize, weight: Self.displayNameFontWeight)
+                .font: NSFont(name: AppFonts.serif, size: Self.displayNameFontSize)
+                    ?? NSFont.systemFont(ofSize: Self.displayNameFontSize, weight: Self.displayNameFontWeight)
             ]
         ).width
         return min(
@@ -747,13 +857,8 @@ struct DashboardContent: View {
     private static func systemAccountFirstName() -> String? {
         let fullName = sanitizedSystemName(NSFullUserName())
 
-        if let fullName,
-            let givenName = PersonNameComponentsFormatter().personNameComponents(from: fullName)?.givenName,
-            !givenName.isEmpty
-        {
-            return givenName
-        }
-
+        // The first word of the account's full name. The system name parser reads "Ashad Mohammed" as
+        // family name first, so it isn't used here.
         if let fullName,
             let firstName = fullName.split(whereSeparator: \.isWhitespace).first
         {
@@ -813,6 +918,10 @@ struct DashboardContent: View {
 
         guard statsSummary.totalCount > 0 else {
             return String(localized: "Record your first session to start building momentum.")
+        }
+
+        if dayStreak >= 2 {
+            return String(localized: "You’re on a roll. \(dayStreak) days in a row.")
         }
 
         if statsSummary.recentSevenDayCount >= 5 {
@@ -978,5 +1087,26 @@ private struct DashboardAmbientBackground: View {
         Color.clear
             .ignoresSafeArea()
             .allowsHitTesting(false)
+    }
+}
+
+/// The dashboard's secondary buttons: a cream card with a hairline border.
+struct DashboardQuietButtonStyle: ButtonStyle {
+    @Environment(\.isEnabled) private var isEnabled
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.appSans(13, weight: .medium))
+            .foregroundStyle(isEnabled ? AppTheme.Palette.inkSoft : AppTheme.Palette.faint)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 8)
+            .background(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(configuration.isPressed ? AppTheme.Palette.paperDeep : AppTheme.Palette.card)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .strokeBorder(AppTheme.Palette.line, lineWidth: 1)
+            )
     }
 }

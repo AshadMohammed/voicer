@@ -47,6 +47,7 @@ struct VoiceInkApp: App {
         AppDefaults.registerDefaults()
         AppLanguagePreference.applyStored()
         AppAppearancePreference.applyStored()
+        AppFonts.register()
         OnboardingV2Migration.prepareIfNeeded()
 
         let logger = Logger(subsystem: "com.prakashjoshipax.voiceink", category: "Initialization")
