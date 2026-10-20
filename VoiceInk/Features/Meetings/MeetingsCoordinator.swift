@@ -64,6 +64,7 @@ final class MeetingsCoordinator: ObservableObject {
     /// History entries go into the app's own database.
     func configure(modelContext: ModelContext) {
         self.modelContext = modelContext
+        CallDetector.shared.start()
     }
 
     func reloadMeetings() {

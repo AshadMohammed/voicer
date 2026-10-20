@@ -315,12 +315,23 @@ private struct MeetingsEmptyState: View {
 
 private struct MeetingsSettingsCard: View {
     let notesFolder: URL
+    @AppStorage(CallDetector.settingKey) private var askToRecordCalls = true
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             AppSectionLabel("Settings")
                 .padding(.leading, 2)
             VStack(spacing: 0) {
+                row(
+                    title: "Ask to record when a call starts",
+                    detail: "When Zoom, Teams, FaceTime, Slack, Webex, Discord or a meeting tab in your browser starts using the microphone, Voicer offers to record. It never records without a click."
+                ) {
+                    Toggle("", isOn: $askToRecordCalls)
+                        .labelsHidden()
+                        .toggleStyle(.switch)
+                        .controlSize(.small)
+                }
+                Rectangle().fill(AppTheme.Palette.line).frame(height: 1)
                 row(title: "Start or stop a meeting", detail: "A shortcut that works from any app. None is set at first.") {
                     ShortcutRecorder(action: .toggleMeetingRecording)
                         .controlSize(.small)
