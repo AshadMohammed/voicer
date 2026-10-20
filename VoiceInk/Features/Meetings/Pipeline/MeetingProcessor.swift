@@ -78,6 +78,9 @@ enum MeetingProcessor {
                 groups.append(try await labelledByVoice(micSamples, analyzer: analyzer, firstNumber: 1, progress: progress))
             } else if MeetingAudioAnalyzer.isSilent(micSamples) {
                 // A muted or missing microphone: everyone who spoke is on the call track.
+                if microphoneURL != nil {
+                    notes.append("Your microphone was silent the whole time (muted, or the wrong input was picked), so only the call's speakers are in the transcript.")
+                }
                 groups.append(try await labelledByVoice(callSamples, analyzer: analyzer, firstNumber: 1, progress: progress))
             } else {
                 progress("Writing out what you said")
