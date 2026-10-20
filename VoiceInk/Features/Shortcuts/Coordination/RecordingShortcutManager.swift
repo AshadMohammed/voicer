@@ -258,6 +258,8 @@ class RecordingShortcutManager: ObservableObject {
             QuickHistoryController.shared.show(modelContext: engine.modelContext, engine: engine)
         case .quickAddToDictionary:
             DictionaryQuickAddManager.shared.toggle(modelContainer: engine.modelContext.container)
+        case .toggleMeetingRecording:
+            MeetingsCoordinator.shared.toggleRecording()
         default:
             break
         }

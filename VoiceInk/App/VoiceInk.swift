@@ -165,6 +165,7 @@ struct VoiceInkApp: App {
         let menuBarManager = MenuBarManager()
         _menuBarManager = StateObject(wrappedValue: menuBarManager)
         menuBarManager.configure(engine: engine)
+        MeetingsCoordinator.shared.configure(modelContext: resolvedContainer.mainContext)
 
         let activeWindowService = ActiveWindowService.shared
         _activeWindowService = StateObject(wrappedValue: activeWindowService)

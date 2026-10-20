@@ -141,6 +141,7 @@ private extension ViewType {
         .modes,
         .transcribeAudio,
         .history,
+        .meetings,
         .dictionary,
         .models,
         .audio,
@@ -164,6 +165,7 @@ private extension ViewType {
         case .dashboard: return "square.grid.2x2"
         case .transcribeAudio: return "waveform"
         case .history: return "clock"
+        case .meetings: return "person.2"
         case .models: return "cpu"
         case .modes: return "slider.horizontal.3"
         case .audio: return "mic"

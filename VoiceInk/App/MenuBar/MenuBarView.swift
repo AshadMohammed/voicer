@@ -15,6 +15,7 @@ struct MenuBarView: View {
     @ObservedObject private var launchAtLoginManager = LaunchAtLoginManager.shared
     @ObservedObject private var modeManager = ModeManager.shared
     @ObservedObject var audioDeviceManager = AudioDeviceManager.shared
+    @ObservedObject private var meetings = MeetingsCoordinator.shared
     @AppStorage(OnboardingSettings.completedV2Key) private var hasCompletedOnboardingV2 = false
 
     var body: some View {
@@ -45,6 +46,21 @@ struct MenuBarView: View {
         Group {
             Button("Toggle Recorder") {
                 recorderUIManager.handleToggleRecorderPanelNotification()
+            }
+
+            Divider()
+
+            Button(meetings.isRecording ? "Stop Meeting Recording" : "Start Meeting Recording") {
+                meetings.toggleRecording()
+            }
+            .disabled(meetings.recordingState == .starting || meetings.recordingState == .finishing)
+
+            Button("Import a Recording as a Meeting…") {
+                meetings.importRecording()
+            }
+
+            Button("Meetings") {
+                showMainWindowAndNavigate(to: "Meetings")
             }
 
             Divider()

@@ -9,6 +9,7 @@ enum ShortcutAction: Hashable {
     case cancelRecorder
     case openQuickHistory
     case quickAddToDictionary
+    case toggleMeetingRecording
     case mode(UUID)
     case recorderPanelEscape
     case recorderPanelReturn
@@ -45,6 +46,8 @@ enum ShortcutAction: Hashable {
             return "openHistoryWindow"
         case .quickAddToDictionary:
             return "quickAddToDictionary"
+        case .toggleMeetingRecording:
+            return "toggleMeetingRecording"
         case .mode(let id):
             return "mode_\(id.uuidString)"
         case .recorderPanelEscape:
@@ -74,6 +77,8 @@ enum ShortcutAction: Hashable {
             return String(localized: "Open Quick History")
         case .quickAddToDictionary:
             return String(localized: "Quick Add to Dictionary")
+        case .toggleMeetingRecording:
+            return String(localized: "Start or Stop Meeting")
         case .mode(let id):
             if let config = ModeManager.shared.getConfiguration(with: id) {
                 return String(format: String(localized: "%@ Mode"), config.name)
@@ -99,6 +104,7 @@ enum ShortcutAction: Hashable {
         .retryLastTranscription,
         .openQuickHistory,
         .quickAddToDictionary,
+        .toggleMeetingRecording,
     ]
 
     static let recorderPanelStoredActions: [Self] = [
