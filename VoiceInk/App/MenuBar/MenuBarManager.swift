@@ -9,13 +9,32 @@ class MenuBarManager: ObservableObject {
         }
     }
 
+    /// Whether the menu bar icon is currently shown. When false, the Dock icon must stay visible
+    /// so the app remains reachable. Read from `@AppStorage("ShowMenuBarIcon")` in the UI;
+    /// this manager reads UserDefaults directly for policy decisions.
+    var isMenuBarIconHidden: Bool {
+        !UserDefaults.standard.bool(forKey: "ShowMenuBarIcon")
+    }
+
     private var engine: VoiceInkEngine?
     private var configuredActivationPolicy: NSApplication.ActivationPolicy {
-        isMenuBarOnly ? .accessory : .regular
+        // If the menu bar icon is hidden, the Dock icon must stay visible.
+        if isMenuBarIconHidden { return .regular }
+        return isMenuBarOnly ? .accessory : .regular
     }
 
     init() {
-        self.isMenuBarOnly = UserDefaults.standard.bool(forKey: "IsMenuBarOnly")
+        let storedMenuBarOnly = UserDefaults.standard.bool(forKey: "IsMenuBarOnly")
+        // If ShowMenuBarIcon has never been set, default it to true.
+        if UserDefaults.standard.object(forKey: "ShowMenuBarIcon") == nil {
+            UserDefaults.standard.set(true, forKey: "ShowMenuBarIcon")
+        }
+        // Force Dock icon on if the menu bar icon is hidden.
+        if !UserDefaults.standard.bool(forKey: "ShowMenuBarIcon") {
+            self.isMenuBarOnly = false
+        } else {
+            self.isMenuBarOnly = storedMenuBarOnly
+        }
         applyActivationPolicy()
 
         NotificationCenter.default.addObserver(

@@ -73,7 +73,7 @@ final class CallPromptPanelController {
             self.hostingView = hosting
         }
 
-        panel?.accessibilityLabel = message
+        panel?.setAccessibilityLabel(message)
     }
 
     func hide() {

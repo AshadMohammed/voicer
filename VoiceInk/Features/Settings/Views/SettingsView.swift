@@ -25,6 +25,7 @@ struct SettingsView: View {
         .systemValue
     @AppStorage(RecorderDisplaySettingsKeys.showLiveTranscript) private var showLiveTranscript = false
     @AppStorage(FinishAndSendSettings.key) private var finishAndSendKey = FinishAndSendKey.none.rawValue
+    @AppStorage("ShowMenuBarIcon") private var showMenuBarIcon = true
     @State private var showResetOnboardingAlert = false
     @State private var showLanguageRestartAlert = false
     @State private var cancelRecordingShortcutRecorderResetID = 0
@@ -229,7 +230,17 @@ struct SettingsView: View {
             }
 
             Section(header: AppSectionLabel("General")) {
+                Toggle("Show Menu Bar Icon", isOn: $showMenuBarIcon)
+                    .onChange(of: showMenuBarIcon) { _, newValue in
+                        if !newValue {
+                            // Force Dock icon on so the app remains reachable.
+                            menuBarManager.isMenuBarOnly = false
+                        }
+                        menuBarManager.applyActivationPolicy()
+                    }
+
                 Toggle("Hide Dock Icon", isOn: $menuBarManager.isMenuBarOnly)
+                    .disabled(!showMenuBarIcon)
 
                 Toggle(
                     String(localized: "Launch at Login"),
