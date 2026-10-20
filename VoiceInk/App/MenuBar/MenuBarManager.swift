@@ -18,8 +18,7 @@ class MenuBarManager: ObservableObject {
 
     private var engine: VoiceInkEngine?
     private var configuredActivationPolicy: NSApplication.ActivationPolicy {
-        // If the menu bar icon is hidden, the Dock icon must stay visible.
-        if isMenuBarIconHidden { return .regular }
+        // Ash (21 Oct): Dock-less works even with the menu bar icon hidden; reopen from Spotlight/Raycast shows the window.
         return isMenuBarOnly ? .accessory : .regular
     }
 
@@ -29,13 +28,7 @@ class MenuBarManager: ObservableObject {
         if UserDefaults.standard.object(forKey: "ShowMenuBarIcon") == nil {
             UserDefaults.standard.set(true, forKey: "ShowMenuBarIcon")
         }
-        // Force Dock icon on if the menu bar icon is hidden.
-        if !UserDefaults.standard.bool(forKey: "ShowMenuBarIcon") {
-            self.isMenuBarOnly = false
-            UserDefaults.standard.set(false, forKey: "IsMenuBarOnly")
-        } else {
-            self.isMenuBarOnly = storedMenuBarOnly
-        }
+        self.isMenuBarOnly = storedMenuBarOnly
         applyActivationPolicy()
 
         NotificationCenter.default.addObserver(

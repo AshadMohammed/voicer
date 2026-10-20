@@ -231,16 +231,11 @@ struct SettingsView: View {
 
             Section(header: AppSectionLabel("General")) {
                 Toggle("Show Menu Bar Icon", isOn: $showMenuBarIcon)
-                    .onChange(of: showMenuBarIcon) { _, newValue in
-                        if !newValue {
-                            // Force Dock icon on so the app remains reachable.
-                            menuBarManager.isMenuBarOnly = false
-                        }
+                    .onChange(of: showMenuBarIcon) { _, _ in
                         menuBarManager.applyActivationPolicy()
                     }
 
                 Toggle("Hide Dock Icon", isOn: $menuBarManager.isMenuBarOnly)
-                    .disabled(!showMenuBarIcon)
 
                 Toggle(
                     String(localized: "Launch at Login"),

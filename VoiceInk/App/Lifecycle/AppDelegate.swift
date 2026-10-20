@@ -10,7 +10,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
-        if let menuBarManager, !menuBarManager.isMenuBarOnly {
+        // Always reopen the window (Spotlight, Raycast, Dock click), also when Dock-less with no menu bar icon.
+        if menuBarManager != nil {
             if WindowManager.shared.currentMainWindow() != nil {
                 WindowManager.shared.showMainWindow()
                 return false
