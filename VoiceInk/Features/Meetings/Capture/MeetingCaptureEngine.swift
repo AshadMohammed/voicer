@@ -1,4 +1,5 @@
 import CoreAudio
+import AVFoundation
 import Foundation
 import os
 
@@ -24,6 +25,7 @@ enum MeetingCaptureError: LocalizedError {
 
 @MainActor
 final class MeetingCaptureEngine {
+    var onProblem: (@MainActor (String) -> Void)?
     private(set) var isRecording = false
     var microphoneLevel: Float { microphoneSink.level }
     var callLevel: Float { callSink.level }
@@ -58,41 +60,53 @@ final class MeetingCaptureEngine {
         callURL = nil
         startedAt = Date()
         sessionHostTime = mach_absolute_time()
-
-        let micURL = folder.appendingPathComponent("microphone.caf")
-        let micSink = microphoneSink
-        let micCapture = MeetingMicrophoneCapture { samples, rate, hostTime in
-            micSink.enqueue(samples, sampleRate: rate, hostTime: hostTime)
+        let reportProblem: @Sendable (String) -> Void = { [weak self] message in
+            Task { @MainActor [weak self] in self?.onProblem?(message) }
         }
-        do {
-            let rate = try micCapture.prepare(deviceID: microphoneDeviceID)
-            let writer = try MeetingTrackWriter(url: micURL, sampleRate: rate,
-                                                sessionHostTime: sessionHostTime, label: "microphone")
-            microphone = micCapture
-            microphoneWriter = writer
-            microphoneSink.set(writer)
-            try micCapture.start()
-            microphoneURL = micURL
-        } catch {
-            micCapture.stop()
-            microphoneWriter?.finish()
-            microphoneWriter = nil
-            microphoneSink.set(nil)
-            try? FileManager.default.removeItem(at: micURL)
-            let warning = "Microphone couldn't be recorded (\(error.localizedDescription))."
+
+        if AVCaptureDevice.authorizationStatus(for: .audio) != .authorized {
+            let warning = "Voicer isn't allowed to use the microphone, so only the call was recorded. Turn it on in System Settings > Privacy & Security > Microphone."
             warnings.append(warning)
-            logger.error("\(warning, privacy: .public)")
+            onProblem?(warning)
+        } else {
+            let micURL = folder.appendingPathComponent("microphone.caf")
+            let micSink = microphoneSink
+            let micCapture = MeetingMicrophoneCapture(handler: { samples, rate, hostTime in
+                micSink.enqueue(samples, sampleRate: rate, hostTime: hostTime)
+            }, onProblem: reportProblem)
+            do {
+                let rate = try micCapture.prepare(deviceID: microphoneDeviceID)
+                let writer = try MeetingTrackWriter(url: micURL, sampleRate: rate,
+                                                    sessionHostTime: sessionHostTime, label: "microphone",
+                                                    onProblem: reportProblem)
+                microphone = micCapture
+                microphoneWriter = writer
+                microphoneSink.set(writer)
+                try micCapture.start()
+                microphoneURL = micURL
+            } catch {
+                micCapture.stop()
+                microphoneWriter?.finish()
+                microphoneWriter = nil
+                microphoneSink.set(nil)
+                try? FileManager.default.removeItem(at: micURL)
+                let warning = "Microphone couldn't be recorded (\(error.localizedDescription))."
+                warnings.append(warning)
+                onProblem?(warning)
+                logger.error("\(warning, privacy: .public)")
+            }
         }
 
         let callSink = self.callSink
-        let tap = SystemAudioTap { samples, rate, hostTime in
+        let tap = SystemAudioTap(handler: { samples, rate, hostTime in
             callSink.enqueue(samples, sampleRate: rate, hostTime: hostTime)
-        }
+        }, onProblem: reportProblem)
         do {
             let rate = try tap.prepare()
             let url = folder.appendingPathComponent("call.caf")
             let writer = try MeetingTrackWriter(url: url, sampleRate: rate,
-                                                sessionHostTime: sessionHostTime, label: "call")
+                                                sessionHostTime: sessionHostTime, label: "call",
+                                                onProblem: reportProblem)
             callWriter = writer
             callSink.set(writer)
             try tap.start()
@@ -106,6 +120,7 @@ final class MeetingCaptureEngine {
             try? FileManager.default.removeItem(at: folder.appendingPathComponent("call.caf"))
             let warning = "System audio couldn't be recorded (\(error.localizedDescription))."
             warnings.append(warning)
+            onProblem?(warning)
             logger.error("\(warning, privacy: .public)")
         }
 
@@ -126,6 +141,14 @@ final class MeetingCaptureEngine {
         microphone?.stop()
         callWriter?.finish()
         microphoneWriter?.finish()
+
+        if let problem = systemTap?.problem { warnings.append(problem) }
+        if let problem = microphone?.problem { warnings.append(problem) }
+        if let problem = callWriter?.problem { warnings.append(problem) }
+        if let problem = microphoneWriter?.problem { warnings.append(problem) }
+        if let systemTap, systemTap.droppedBlockCount > 0 {
+            warnings.append("Some call audio was dropped because the Mac was busy (\(systemTap.droppedBlockCount) short gaps).")
+        }
 
         let micDuration = Double(microphoneWriter?.frameCount ?? 0) / (microphoneWriter?.sampleRate ?? 1)
         let callDuration = Double(callWriter?.frameCount ?? 0) / (callWriter?.sampleRate ?? 1)

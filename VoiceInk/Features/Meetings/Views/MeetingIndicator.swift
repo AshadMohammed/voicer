@@ -8,7 +8,7 @@ final class MeetingIndicatorController {
     static let shared = MeetingIndicatorController()
 
     private var panel: NSPanel?
-    private let size = NSSize(width: 236, height: 48)
+    private let size = NSSize(width: 248, height: 60)
 
     private init() {}
 
@@ -39,7 +39,7 @@ final class MeetingIndicatorController {
 
         if let screen = NSScreen.main ?? NSScreen.screens.first {
             let frame = screen.visibleFrame
-            panel.setFrameOrigin(NSPoint(x: frame.maxX - size.width - 16, y: frame.maxY - size.height - 10))
+            panel.setFrameOrigin(NSPoint(x: frame.maxX - size.width - 10, y: frame.maxY - size.height - 4))
         }
         panel.orderFrontRegardless()
         self.panel = panel
@@ -86,11 +86,11 @@ struct MeetingIndicatorView: View {
             } label: {
                 HStack(spacing: 5) {
                     RoundedRectangle(cornerRadius: 2, style: .continuous)
-                        .fill(Color.white)
+                        .fill(AppTheme.Text.onAccent)
                         .frame(width: 8, height: 8)
                     Text("Stop")
                         .font(.appSans(12, weight: .semibold))
-                        .foregroundStyle(Color.white)
+                        .foregroundStyle(AppTheme.Text.onAccent)
                 }
                 .padding(.horizontal, 10)
                 .frame(height: 26)
@@ -105,8 +105,8 @@ struct MeetingIndicatorView: View {
         .frame(width: 228, height: 40)
         .background(Capsule().fill(AppTheme.Palette.card))
         .overlay(Capsule().strokeBorder(AppTheme.Palette.lineStrong, lineWidth: 1))
-        .shadow(color: Color.black.opacity(0.12), radius: 6, y: 2)
-        .frame(width: 236, height: 48)
+        .shadow(color: AppTheme.Palette.ink.opacity(0.18), radius: 8, y: 3)
+        .frame(width: 248, height: 60)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Recording a meeting")
     }

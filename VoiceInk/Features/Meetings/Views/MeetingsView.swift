@@ -164,7 +164,7 @@ struct MeetingAccentButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.appSans(13, weight: .semibold))
-            .foregroundStyle(Color.white)
+            .foregroundStyle(AppTheme.Text.onAccent)
             .padding(.horizontal, 14)
             .padding(.vertical, 8)
             .background(

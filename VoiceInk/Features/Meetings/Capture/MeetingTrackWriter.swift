@@ -32,7 +32,9 @@ final class MeetingTrackSink: @unchecked Sendable {
 final class MeetingTrackWriter: @unchecked Sendable {
     private let queue: DispatchQueue
     private let logger: Logger
+    private let onProblem: @Sendable (String) -> Void
     private let sessionHostTime: UInt64
+    private let timebase: mach_timebase_info_data_t
     let sampleRate: Double
     private let file: AVAudioFile
     private let format: AVAudioFormat
@@ -43,6 +45,9 @@ final class MeetingTrackWriter: @unchecked Sendable {
     private var converter: AVAudioConverter?
     private var converterInputRate: Double = 0
     private var closed = false
+    private var firstTimedBuffer = true
+    private var firstWriteError: String?
+    private var failedWriteCount = 0
 
     var level: Float {
         levelLock.lock()
@@ -54,8 +59,20 @@ final class MeetingTrackWriter: @unchecked Sendable {
         queue.sync { writtenFrames }
     }
 
-    init(url: URL, sampleRate: Double, sessionHostTime: UInt64, label: String) throws {
+    var problem: String? {
+        queue.sync {
+            guard let firstWriteError else { return nil }
+            return "Audio writing failed \(failedWriteCount) time(s): \(firstWriteError)"
+        }
+    }
+
+    init(url: URL, sampleRate: Double, sessionHostTime: UInt64, label: String,
+         onProblem: @escaping @Sendable (String) -> Void = { _ in }) throws {
         self.sessionHostTime = sessionHostTime
+        self.onProblem = onProblem
+        var timebase = mach_timebase_info_data_t()
+        mach_timebase_info(&timebase)
+        self.timebase = timebase
         self.sampleRate = sampleRate
         self.queue = DispatchQueue(label: "com.prakashjoshipax.voiceink.meeting.writer.\(label)")
         self.logger = Logger(subsystem: "com.prakashjoshipax.voiceink", category: "MeetingCapture")
@@ -99,7 +116,7 @@ final class MeetingTrackWriter: @unchecked Sendable {
                                                   channels: 1, interleaved: false),
                   let input = AVAudioPCMBuffer(pcmFormat: inputFormat,
                                                frameCapacity: AVAudioFrameCount(samples.count)),
-                  let channel = input.floatChannelData?.pointee else { return }
+                  let channel = input.floatChannelData?.pointee else { throw WriterError.invalidFormat }
             input.frameLength = AVAudioFrameCount(samples.count)
             samples.withUnsafeBufferPointer { source in
                 channel.update(from: source.baseAddress!, count: samples.count)
@@ -136,12 +153,25 @@ final class MeetingTrackWriter: @unchecked Sendable {
                 output = converted
             }
 
-            let frames = AVAudioFramePosition(output.frameLength)
-            let target = targetFrame(hostTime: hostTime)
-            if target > writtenFrames + AVAudioFramePosition(format.sampleRate * 0.5) {
-                try writeSilence(frames: target - writtenFrames)
+            var bufferToWrite = output
+            if hostTime != 0 {
+                let target = targetFrame(hostTime: hostTime)
+                let drift = target - writtenFrames
+                if firstTimedBuffer {
+                    if drift > 0 { try writeSilence(frames: drift) }
+                    firstTimedBuffer = false
+                } else {
+                    let threshold = AVAudioFramePosition(format.sampleRate * 0.1)
+                    if drift > threshold {
+                        try writeSilence(frames: drift)
+                    } else if drift < -threshold {
+                        let trim = min(-drift, AVAudioFramePosition(output.frameLength))
+                        bufferToWrite = try droppingLeadingFrames(Int(trim), from: output)
+                    }
+                }
             }
-            try file.write(from: output)
+            let frames = AVAudioFramePosition(bufferToWrite.frameLength)
+            if frames > 0 { try file.write(from: bufferToWrite) }
             writtenFrames += frames
             receivedFrames += AVAudioFramePosition(samples.count)
             if let data = output.floatChannelData?.pointee, output.frameLength > 0 {
@@ -152,16 +182,30 @@ final class MeetingTrackWriter: @unchecked Sendable {
                 levelLock.unlock()
             }
         } catch {
+            failedWriteCount += 1
+            if firstWriteError == nil {
+                firstWriteError = error.localizedDescription
+                onProblem("Meeting audio could not be saved (\(error.localizedDescription)).")
+            }
             logger.error("Meeting track write failed: \(error.localizedDescription, privacy: .public)")
         }
     }
 
+    private func droppingLeadingFrames(_ count: Int, from source: AVAudioPCMBuffer) throws -> AVAudioPCMBuffer {
+        let remaining = Int(source.frameLength) - count
+        guard remaining >= 0,
+              let result = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(max(1, remaining))),
+              let input = source.floatChannelData?.pointee,
+              let output = result.floatChannelData?.pointee else { throw WriterError.invalidFormat }
+        result.frameLength = AVAudioFrameCount(remaining)
+        if remaining > 0 { output.update(from: input.advanced(by: count), count: remaining) }
+        return result
+    }
+
     private func targetFrame(hostTime: UInt64) -> AVAudioFramePosition {
         guard hostTime > sessionHostTime else { return 0 }
-        var info = mach_timebase_info_data_t()
-        mach_timebase_info(&info)
         let ticks = hostTime - sessionHostTime
-        let nanos = Double(ticks) * Double(info.numer) / Double(info.denom)
+        let nanos = Double(ticks) * Double(timebase.numer) / Double(timebase.denom)
         return AVAudioFramePosition(nanos / 1_000_000_000 * format.sampleRate)
     }
 
@@ -169,7 +213,7 @@ final class MeetingTrackWriter: @unchecked Sendable {
         guard frames > 0 else { return }
         let chunkLimit: AVAudioFrameCount = 32_768
         guard let silence = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: chunkLimit),
-              let samples = silence.floatChannelData?.pointee else { return }
+              let samples = silence.floatChannelData?.pointee else { throw WriterError.invalidFormat }
         samples.initialize(repeating: 0, count: Int(chunkLimit))
         var remaining = frames
         while remaining > 0 {

@@ -50,6 +50,9 @@ final class MeetingsCoordinator: ObservableObject {
     private var storeObserver: NSObjectProtocol?
 
     private init() {
+        capture.onProblem = { message in
+            NotificationManager.shared.showNotification(title: message, type: .warning, duration: 6)
+        }
         storeObserver = NotificationCenter.default.addObserver(
             forName: MeetingStore.didChangeNotification, object: nil, queue: .main
         ) { [weak self] _ in
@@ -202,8 +205,8 @@ final class MeetingsCoordinator: ObservableObject {
 
         if let version = MeetingAudioAnalyzer.downloadedSpeechModels().first {
             do {
-                let result = try await MeetingProcessor.process(audio, asrVersion: version) { stage in
-                    Task { @MainActor [weak self] in self?.update(jobID, stage: stage) }
+                let result = try await MeetingProcessor.process(audio, asrVersion: version) { [weak self] stage in
+                    Task { @MainActor in self?.update(jobID, stage: stage) }
                 }
                 record.utterances = result.utterances
                 record.notes += result.notes

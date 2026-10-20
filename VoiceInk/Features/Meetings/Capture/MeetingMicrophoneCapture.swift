@@ -10,10 +10,17 @@ final class MeetingMicrophoneCapture: @unchecked Sendable {
     private let queue = DispatchQueue(label: "com.prakashjoshipax.voiceink.meeting.microphone")
     private let logger = Logger(subsystem: "com.prakashjoshipax.voiceink", category: "MeetingCapture")
     private let handler: Handler
+    private let onProblem: @Sendable (String) -> Void
+    private var restartProblem: String?
     private var configurationObserver: NSObjectProtocol?
     private var active = false
 
-    init(handler: @escaping Handler) { self.handler = handler }
+    init(handler: @escaping Handler, onProblem: @escaping @Sendable (String) -> Void = { _ in }) {
+        self.handler = handler
+        self.onProblem = onProblem
+    }
+
+    var problem: String? { queue.sync { restartProblem } }
 
     func prepare(deviceID: AudioDeviceID?) throws -> Double {
         try queue.sync {
@@ -46,7 +53,10 @@ final class MeetingMicrophoneCapture: @unchecked Sendable {
                         self.engine.inputNode.removeTap(onBus: 0)
                         try self.installTapAndStart()
                     } catch {
+                        let message = "Microphone capture stopped after an audio configuration change (\(error.localizedDescription))."
+                        self.restartProblem = self.restartProblem ?? message
                         self.logger.error("Microphone restart failed: \(error.localizedDescription, privacy: .public)")
+                        self.onProblem(message)
                     }
                 }
             }
@@ -90,7 +100,7 @@ final class MeetingMicrophoneCapture: @unchecked Sendable {
             } else {
                 return
             }
-            handler(mono, buffer.format.sampleRate, time.hostTime)
+            handler(mono, buffer.format.sampleRate, time.isHostTimeValid ? time.hostTime : 0)
         }
         try engine.start()
     }
