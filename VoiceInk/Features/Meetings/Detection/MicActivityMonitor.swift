@@ -11,9 +11,23 @@ struct MicProcess: Hashable, Sendable {
 /// Voicer's own process is always left out.
 final class MicActivityMonitor: @unchecked Sendable {
 
+    private let lock = NSLock()
+    private var _onChange: ((Set<MicProcess>) -> Void)?
+
     /// Called on the main queue with the full current set, only when it changes.
     /// Also called once right after `start()`.
-    var onChange: ((Set<MicProcess>) -> Void)?
+    var onChange: ((Set<MicProcess>) -> Void)? {
+        get {
+            lock.lock()
+            defer { lock.unlock() }
+            return _onChange
+        }
+        set {
+            lock.lock()
+            defer { lock.unlock() }
+            _onChange = newValue
+        }
+    }
 
     private let queue = DispatchQueue(label: "com.prakashjoshipax.voiceink.MicActivityMonitor")
     private var started = false

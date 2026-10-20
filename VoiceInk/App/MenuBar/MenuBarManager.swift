@@ -32,6 +32,7 @@ class MenuBarManager: ObservableObject {
         // Force Dock icon on if the menu bar icon is hidden.
         if !UserDefaults.standard.bool(forKey: "ShowMenuBarIcon") {
             self.isMenuBarOnly = false
+            UserDefaults.standard.set(false, forKey: "IsMenuBarOnly")
         } else {
             self.isMenuBarOnly = storedMenuBarOnly
         }

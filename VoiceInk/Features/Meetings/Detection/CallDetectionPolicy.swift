@@ -44,6 +44,8 @@ struct CallDetectionPolicy {
     private var startPromptShownAt: Date?
     /// The source the start prompt is for.
     private var startPromptSource: CallSource?
+    /// Timestamp the current end prompt was shown.
+    private var endPromptShownAt: Date?
 
     // Browser tab checking
     private var browserFirstCheckAt: [CallSource: Date] = [:]
@@ -101,6 +103,7 @@ struct CallDetectionPolicy {
                 if case .end = prompt {
                     actions.append(.hidePrompt)
                     prompt = nil
+                    endPromptShownAt = nil
                 }
             } else if allSourcesLeftAt == nil {
                 allSourcesLeftAt = now
@@ -135,6 +138,7 @@ struct CallDetectionPolicy {
             if case .end = prompt {
                 actions.append(.hidePrompt)
                 prompt = nil
+                endPromptShownAt = nil
             }
             // Snooze every currently active source.
             for source in activeSources.keys {
@@ -176,6 +180,11 @@ struct CallDetectionPolicy {
             actions += handleNotNow()
         }
 
+        // Check end-prompt timeout.
+        if case .end = prompt, let shownAt = endPromptShownAt, now.timeIntervalSince(shownAt) >= promptTimeout {
+            actions += handleKeepRecording()
+        }
+
         actions += evaluateStartPrompt(now: now)
         actions += evaluateEndPrompt(now: now)
         return actions
@@ -213,21 +222,13 @@ struct CallDetectionPolicy {
         guard case .end = prompt else { return actions }
         actions.append(.hidePrompt)
         prompt = nil
+        endPromptShownAt = nil
         actions.append(.stopRecording)
         return actions
     }
 
     mutating func userTappedKeepRecording(now: Date) -> [Action] {
-        var actions: [Action] = []
-        guard case .end = prompt else { return actions }
-        actions.append(.hidePrompt)
-        prompt = nil
-        // The call sources become just the currently active ones (normally none).
-        recordingCallSources = Set(activeSources.keys).intersection(recordingCallSources.union(activeSources.keys))
-        // Actually: "the call sources become just the currently active ones"
-        recordingCallSources = Set(activeSources.keys)
-        allSourcesLeftAt = nil
-        return actions
+        return handleKeepRecording()
     }
 
     mutating func reset() -> [Action] {
@@ -242,6 +243,7 @@ struct CallDetectionPolicy {
         allSourcesLeftAt = nil
         startPromptShownAt = nil
         startPromptSource = nil
+        endPromptShownAt = nil
         browserFirstCheckAt = [:]
         browserLastCheckAt = [:]
         browserCheckOutstanding = []
@@ -251,6 +253,19 @@ struct CallDetectionPolicy {
     }
 
     // MARK: - Private helpers
+
+    /// Handle "Keep recording" or end prompt timeout: keep recording, hide prompt, reset call sources.
+    private mutating func handleKeepRecording() -> [Action] {
+        var actions: [Action] = []
+        guard case .end = prompt else { return actions }
+        actions.append(.hidePrompt)
+        prompt = nil
+        endPromptShownAt = nil
+        // The call sources become just the currently active ones (normally none).
+        recordingCallSources = Set(activeSources.keys)
+        allSourcesLeftAt = nil
+        return actions
+    }
 
     /// Handle "Not now" or prompt timeout: snooze the source, hide the prompt.
     private mutating func handleNotNow() -> [Action] {
@@ -341,6 +356,7 @@ struct CallDetectionPolicy {
         guard let leftAt = allSourcesLeftAt, now.timeIntervalSince(leftAt) >= endDelay else { return [] }
 
         prompt = .end
+        endPromptShownAt = now
         return [.showPrompt(.end)]
     }
 }
