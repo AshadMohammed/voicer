@@ -19,7 +19,7 @@ struct MeetingResult: Sendable {
 
 /// Runs a finished meeting through transcription, speaker labelling and the summary.
 enum MeetingProcessor {
-    private static let logger = Logger(subsystem: "com.prakashjoshipax.voiceink", category: "MeetingProcessor")
+    private static let logger = Logger(subsystem: "com.ashadmohammed.voicer", category: "MeetingProcessor")
 
     static func process(
         _ audio: MeetingAudio,

@@ -335,7 +335,7 @@ final class RecordingShortcutModeHandler {
     private var pendingFirstTapTimeout: Task<Void, Never>?
     private var ignoresNextShortcutUp = false
 
-    private let logger = Logger(subsystem: "com.prakashjoshipax.voiceink", category: "RecordingShortcut")
+    private let logger = Logger(subsystem: "com.ashadmohammed.voicer", category: "RecordingShortcut")
 
     private let shortcutPressCooldown: TimeInterval = 0.5
     private let hybridPressThreshold: TimeInterval = 0.5

@@ -4,7 +4,7 @@ import os
 final class MiniRecorderPanel: NSPanel {
     override var canBecomeKey: Bool { true }
 
-    private let logger = Logger(subsystem: "com.prakashjoshipax.voiceink", category: "MiniRecorderPanel")
+    private let logger = Logger(subsystem: "com.ashadmohammed.voicer", category: "MiniRecorderPanel")
 
     init(contentRect: NSRect) {
         super.init(

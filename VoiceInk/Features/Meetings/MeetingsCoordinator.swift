@@ -44,7 +44,7 @@ final class MeetingsCoordinator: ObservableObject {
 
     let store = MeetingStore.shared
     private let capture = MeetingCaptureEngine()
-    private let logger = Logger(subsystem: "com.prakashjoshipax.voiceink", category: "Meetings")
+    private let logger = Logger(subsystem: "com.ashadmohammed.voicer", category: "Meetings")
     private var modelContext: ModelContext?
     private var processingTail: Task<Void, Never>?
     private var storeObserver: NSObjectProtocol?

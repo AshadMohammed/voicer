@@ -22,7 +22,7 @@ final class MeetingAudioAnalyzer {
     private let converter = AudioConverter()
     private var asrManager: AsrManager?
     private var diarizer: OfflineDiarizerManager?
-    private let logger = Logger(subsystem: "com.prakashjoshipax.voiceink", category: "MeetingAudioAnalyzer")
+    private let logger = Logger(subsystem: "com.ashadmohammed.voicer", category: "MeetingAudioAnalyzer")
 
     init(asrVersion: AsrModelVersion) {
         self.asrVersion = asrVersion

@@ -25,11 +25,11 @@ final class SystemAudioTap: @unchecked Sendable {
         var problem: String?
     }
 
-    private let queue = DispatchQueue(label: "com.prakashjoshipax.voiceink.meeting.system-audio")
+    private let queue = DispatchQueue(label: "com.ashadmohammed.voicer.meeting.system-audio")
     // The IOProc gets its own queue: AudioDeviceStop, called on `queue`, waits for the IO cycle to finish,
     // so running the IO block on `queue` too would deadlock on stop and on an output-device rebuild.
-    private let ioQueue = DispatchQueue(label: "com.prakashjoshipax.voiceink.meeting.system-audio.io", qos: .userInteractive)
-    private let logger = Logger(subsystem: "com.prakashjoshipax.voiceink", category: "MeetingCapture")
+    private let ioQueue = DispatchQueue(label: "com.ashadmohammed.voicer.meeting.system-audio.io", qos: .userInteractive)
+    private let logger = Logger(subsystem: "com.ashadmohammed.voicer", category: "MeetingCapture")
     private let handler: Handler
     private let onProblem: @Sendable (String) -> Void
     private let pool = OSAllocatedUnfairLock(initialState: PoolState())
@@ -108,7 +108,7 @@ final class SystemAudioTap: @unchecked Sendable {
         ]]
         var aggregateDescription: [String: Any] = [
             kAudioAggregateDeviceNameKey: "Voicer Meeting Capture",
-            kAudioAggregateDeviceUIDKey: "com.prakashjoshipax.voiceink.meeting-tap.\(description.uuid.uuidString)",
+            kAudioAggregateDeviceUIDKey: "com.ashadmohammed.voicer.meeting-tap.\(description.uuid.uuidString)",
             kAudioAggregateDeviceIsPrivateKey: true,
             kAudioAggregateDeviceIsStackedKey: false,
             kAudioAggregateDeviceTapAutoStartKey: true,

@@ -16,7 +16,7 @@ class AudioTranscriptionService: ObservableObject {
 
     private let modelContext: ModelContext
     private let enhancementService: AIEnhancementService?
-    private let logger = Logger(subsystem: "com.prakashjoshipax.voiceink", category: "AudioTranscriptionService")
+    private let logger = Logger(subsystem: "com.ashadmohammed.voicer", category: "AudioTranscriptionService")
     private let serviceRegistry: TranscriptionServiceRegistry
 
     enum TranscriptionError: Error {
@@ -87,7 +87,7 @@ class AudioTranscriptionService: ObservableObject {
             let recordingsDirectory = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[
                 0
             ]
-            .appendingPathComponent("com.prakashjoshipax.VoiceInk")
+            .appendingPathComponent("com.ashadmohammed.Voicer")
             .appendingPathComponent("Recordings")
 
             let fileName = "retranscribed_\(UUID().uuidString).wav"

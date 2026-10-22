@@ -5,7 +5,7 @@ import os
 /// Streams audio through FluidAudio's Unified manager.
 @MainActor
 final class FluidAudioUnifiedStreamingProvider: StreamingTranscriptionProvider {
-    private let logger = Logger(subsystem: "com.prakashjoshipax.voiceink", category: "FluidAudioUnifiedStreaming")
+    private let logger = Logger(subsystem: "com.ashadmohammed.voicer", category: "FluidAudioUnifiedStreaming")
     private let models: UnifiedModelCache<StreamingUnifiedAsrManager>
     private let processing = UnifiedModelAccess()
     private var manager: StreamingUnifiedAsrManager?

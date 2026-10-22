@@ -23,13 +23,13 @@ final class KeychainService {
         case unavailable(OSStatus)
     }
 
-    private let logger = Logger(subsystem: "com.prakashjoshipax.voiceink", category: "KeychainService")
+    private let logger = Logger(subsystem: "com.ashadmohammed.voicer", category: "KeychainService")
     #if LOCAL_BUILD
-        private let service = "com.prakashjoshipax.VoiceInk.Local"
+        private let service = "com.ashadmohammed.Voicer.Local"
         private let defaults = UserDefaults.standard
         private let legacyLocalPrefix = "LocalKeychain_"
     #else
-        private let service = "com.prakashjoshipax.VoiceInk"
+        private let service = "com.ashadmohammed.Voicer"
     #endif
 
     private init() {}

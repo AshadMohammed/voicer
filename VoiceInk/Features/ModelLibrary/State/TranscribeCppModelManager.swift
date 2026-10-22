@@ -271,7 +271,7 @@ final class TranscribeCppModelManager: ObservableObject {
     private var activeDownloadIDs: [String: UUID] = [:]
     private var activeDownloadTasks: [String: Task<Void, Never>] = [:]
     private let logger = Logger(
-        subsystem: "com.prakashjoshipax.voiceink",
+        subsystem: "com.ashadmohammed.voicer",
         category: "TranscribeCppModelManager"
     )
 

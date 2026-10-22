@@ -11,7 +11,7 @@ final class CallDetector {
 
     private let monitor = MicActivityMonitor()
     private var policy = CallDetectionPolicy()
-    private let logger = Logger(subsystem: "com.prakashjoshipax.voiceink", category: "CallDetection")
+    private let logger = Logger(subsystem: "com.ashadmohammed.voicer", category: "CallDetection")
 
     private var tickTimer: Timer?
     private var recordingSubscription: AnyCancellable?

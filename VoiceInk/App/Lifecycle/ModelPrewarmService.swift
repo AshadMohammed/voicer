@@ -9,7 +9,7 @@ final class ModelPrewarmService: ObservableObject {
     private let whisperModelManager: WhisperModelManager
     private let modelContext: ModelContext
     private let fluidAudioService: FluidAudioTranscriptionService
-    private let logger = Logger(subsystem: "com.prakashjoshipax.voiceink", category: "ModelPrewarm")
+    private let logger = Logger(subsystem: "com.ashadmohammed.voicer", category: "ModelPrewarm")
     private lazy var serviceRegistry = TranscriptionServiceRegistry(
         modelProvider: whisperModelManager,
         modelsDirectory: whisperModelManager.modelsDirectory,

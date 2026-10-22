@@ -21,7 +21,7 @@ enum MeetingSummaryOutcome: Sendable {
 /// Long meetings don't fit the model's small context, so they are summarised in parts and the
 /// part notes are then combined.
 enum MeetingSummarizer {
-    private static let logger = Logger(subsystem: "com.prakashjoshipax.voiceink", category: "MeetingSummarizer")
+    private static let logger = Logger(subsystem: "com.ashadmohammed.voicer", category: "MeetingSummarizer")
 
     static func summarize(transcript: String) async -> MeetingSummaryOutcome {
         let trimmed = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -80,7 +80,7 @@ enum MeetingSummarizer {
 
     @available(macOS 26.0, *)
     enum OnDeviceMeetingSummarizer {
-        private static let logger = Logger(subsystem: "com.prakashjoshipax.voiceink", category: "MeetingSummarizer")
+        private static let logger = Logger(subsystem: "com.ashadmohammed.voicer", category: "MeetingSummarizer")
 
         private static let partInstructions = """
             You take notes on part of a meeting transcript. Each line starts with who is speaking.

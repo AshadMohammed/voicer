@@ -74,8 +74,8 @@ final class MeetingTrackWriter: @unchecked Sendable {
         mach_timebase_info(&timebase)
         self.timebase = timebase
         self.sampleRate = sampleRate
-        self.queue = DispatchQueue(label: "com.prakashjoshipax.voiceink.meeting.writer.\(label)")
-        self.logger = Logger(subsystem: "com.prakashjoshipax.voiceink", category: "MeetingCapture")
+        self.queue = DispatchQueue(label: "com.ashadmohammed.voicer.meeting.writer.\(label)")
+        self.logger = Logger(subsystem: "com.ashadmohammed.voicer", category: "MeetingCapture")
         guard let format = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: sampleRate,
                                          channels: 1, interleaved: false) else {
             throw WriterError.invalidFormat

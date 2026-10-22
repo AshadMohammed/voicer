@@ -2,7 +2,7 @@ import Darwin
 import Foundation
 
 enum ShellCommandEnvironment {
-    private static let shellPathQueue = DispatchQueue(label: "com.prakashjoshipax.voiceink.shell.path")
+    private static let shellPathQueue = DispatchQueue(label: "com.ashadmohammed.voicer.shell.path")
     private static var cachedPreferredPATH: String?
     private static let inheritedEnvironmentKeys = [
         "HOME",

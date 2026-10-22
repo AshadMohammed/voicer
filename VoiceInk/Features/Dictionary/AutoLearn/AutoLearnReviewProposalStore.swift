@@ -13,7 +13,7 @@ actor AutoLearnReviewProposalStore {
             in: .userDomainMask
         )[0]
         fileURL = applicationSupport
-            .appendingPathComponent("com.prakashjoshipax.VoiceInk", isDirectory: true)
+            .appendingPathComponent("com.ashadmohammed.Voicer", isDirectory: true)
             .appendingPathComponent("auto-learn-review-proposals.json")
     }
 

@@ -3,7 +3,7 @@ import os
 
 enum MeetingAudioArchiver {
     private static let logger = Logger(
-        subsystem: "com.prakashjoshipax.voiceink",
+        subsystem: "com.ashadmohammed.voicer",
         category: "MeetingStorage"
     )
 

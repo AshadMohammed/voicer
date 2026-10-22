@@ -29,7 +29,7 @@ final class MicActivityMonitor: @unchecked Sendable {
         }
     }
 
-    private let queue = DispatchQueue(label: "com.prakashjoshipax.voiceink.MicActivityMonitor")
+    private let queue = DispatchQueue(label: "com.ashadmohammed.voicer.MicActivityMonitor")
     private var started = false
     private var timer: DispatchSourceTimer?
     private var lastPublished = Set<MicProcess>()

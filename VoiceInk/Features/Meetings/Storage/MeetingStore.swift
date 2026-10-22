@@ -4,7 +4,7 @@ import Foundation
 ///
 /// Layout:
 /// - Notes  → `~/Documents/Voicer Meetings/<yyyy-MM-dd HHmm> <title>.md`
-/// - Data   → `~/Library/Application Support/com.prakashjoshipax.VoiceInk/Meetings/<uuid>/meeting.json`
+/// - Data   → `~/Library/Application Support/com.ashadmohammed.Voicer/Meetings/<uuid>/meeting.json`
 /// - Audio  → same `<uuid>` folder (written by the lead's recorder)
 final class MeetingStore: @unchecked Sendable {
     static let shared = MeetingStore()
@@ -20,7 +20,7 @@ final class MeetingStore: @unchecked Sendable {
 
     static var defaultDataFolder: URL {
         FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("com.prakashjoshipax.VoiceInk/Meetings", isDirectory: true)
+            .appendingPathComponent("com.ashadmohammed.Voicer/Meetings", isDirectory: true)
     }
 
     // MARK: - Properties
@@ -29,7 +29,7 @@ final class MeetingStore: @unchecked Sendable {
     let dataFolder: URL
 
     /// Serialises all file I/O so callers can safely use this from background tasks.
-    private let queue = DispatchQueue(label: "com.prakashjoshipax.voiceink.meeting-store")
+    private let queue = DispatchQueue(label: "com.ashadmohammed.voicer.meeting-store")
 
     private let encoder: JSONEncoder = {
         let e = JSONEncoder()

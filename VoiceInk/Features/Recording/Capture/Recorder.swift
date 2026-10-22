@@ -7,14 +7,14 @@ import os
 @MainActor
 class Recorder: NSObject, ObservableObject {
     var recorder: CoreAudioRecorder?
-    let logger = Logger(subsystem: "com.prakashjoshipax.voiceink", category: "Recorder")
+    let logger = Logger(subsystem: "com.ashadmohammed.voicer", category: "Recorder")
     let deviceManager = AudioDeviceManager.shared
     private var lifecycleCancellable: AnyCancellable?
     var recordingDeviceChangeObserver: NSObjectProtocol?
     private let mediaController = MediaController.shared
     private let playbackController = PlaybackController.shared
     /// Dedicated serial queue for hardware setup.
-    let audioSetupQueue = DispatchQueue(label: "com.prakashjoshipax.voiceink.audioSetup", qos: .userInitiated)
+    let audioSetupQueue = DispatchQueue(label: "com.ashadmohammed.voicer.audioSetup", qos: .userInitiated)
     private let recordingAudioActionDelayNanoseconds: UInt64 = 220_000_000
     private var audioMuteTask: Task<Void, Never>?
     private var mediaPauseTask: Task<Void, Never>?

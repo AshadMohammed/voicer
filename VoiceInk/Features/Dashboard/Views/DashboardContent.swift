@@ -4,7 +4,7 @@ import SwiftUI
 import os
 
 struct DashboardContent: View {
-    private let logger = Logger(subsystem: "com.prakashjoshipax.voiceink", category: "DashboardContent")
+    private let logger = Logger(subsystem: "com.ashadmohammed.voicer", category: "DashboardContent")
     private static let fallbackDisplayName = String(localized: "there")
     private static let displayNameFontSize: CGFloat = 34
     private static let displayNameFontWeight: NSFont.Weight = .bold

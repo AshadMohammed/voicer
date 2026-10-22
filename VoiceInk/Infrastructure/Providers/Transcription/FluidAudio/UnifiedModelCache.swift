@@ -17,7 +17,7 @@ final class UnifiedModelCache<Manager: UnifiedModel> {
     private var modelTask: Task<Manager, Error>?
     private let access = UnifiedModelAccess()
     private let makeManager: () -> Manager
-    private let logger = Logger(subsystem: "com.prakashjoshipax.voiceink", category: "UnifiedModelCache")
+    private let logger = Logger(subsystem: "com.ashadmohammed.voicer", category: "UnifiedModelCache")
 
     init(makeManager: @escaping () -> Manager) {
         self.makeManager = makeManager

@@ -20,7 +20,7 @@ class FluidAudioTranscriptionService: TranscriptionService {
     private var cachedModels: AsrModels?
     private var loadingTask: (version: AsrModelVersion, task: Task<AsrModels, Error>)?
     private let audioConverter = AudioConverter()
-    private let logger = Logger(subsystem: "com.prakashjoshipax.voiceink", category: "FluidAudioTranscriptionService")
+    private let logger = Logger(subsystem: "com.ashadmohammed.voicer", category: "FluidAudioTranscriptionService")
 
     @MainActor
     func prewarmUnifiedModel(isRealtime: Bool) async throws {

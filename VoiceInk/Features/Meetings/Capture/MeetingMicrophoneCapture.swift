@@ -7,8 +7,8 @@ final class MeetingMicrophoneCapture: @unchecked Sendable {
     typealias Handler = ([Float], Double, UInt64) -> Void
 
     private let engine = AVAudioEngine()
-    private let queue = DispatchQueue(label: "com.prakashjoshipax.voiceink.meeting.microphone")
-    private let logger = Logger(subsystem: "com.prakashjoshipax.voiceink", category: "MeetingCapture")
+    private let queue = DispatchQueue(label: "com.ashadmohammed.voicer.meeting.microphone")
+    private let logger = Logger(subsystem: "com.ashadmohammed.voicer", category: "MeetingCapture")
     private let handler: Handler
     private let onProblem: @Sendable (String) -> Void
     private var restartProblem: String?

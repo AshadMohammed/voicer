@@ -5,7 +5,7 @@ import SwiftData
 actor AutoLearnService {
     static let shared = AutoLearnService()
 
-    private let logger = Logger(subsystem: "com.prakashjoshipax.voiceink", category: "AutoLearn")
+    private let logger = Logger(subsystem: "com.ashadmohammed.voicer", category: "AutoLearn")
     private let accessibilityRuntime = AutoLearnAXRuntime()
     private let focusObserver = AutoLearnFocusObserver()
     private let pendingQueue = AutoLearnPendingQueue()
