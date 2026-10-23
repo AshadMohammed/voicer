@@ -140,6 +140,11 @@ final class CallDetector {
             }
         }
 
+        if lastKnownBusy {
+            // Kept in the log at notice level so a missed call end can be traced afterwards.
+            let ids = processes.map(\.bundleID).sorted().joined(separator: ", ")
+            logger.notice("While recording, mic in use by: \(ids.isEmpty ? "nobody" : ids, privacy: .public)")
+        }
         activeSources = sources
         if sources.isEmpty { browserSiteNames = [:] }
         updateCurrentCallName()
@@ -196,13 +201,14 @@ final class CallDetector {
         case .hidePrompt:
             logger.info("Hiding prompt")
             CallPromptPanelController.shared.hide()
+            MeetingIndicatorController.shared.hideCallEnded()
         case .checkBrowserTab(let source):
             checkBrowserTab(source)
         case .startRecording:
             logger.info("Starting recording from call detection")
             MeetingsCoordinator.shared.startRecording()
         case .stopRecording:
-            logger.info("Stopping recording from call detection")
+            logger.notice("Stopping recording from call detection")
             MeetingsCoordinator.shared.stopRecording()
         }
     }
@@ -236,24 +242,15 @@ final class CallDetector {
                 }
             )
         case .end:
-            let message = String(localized: "Call ended. Stop and save?")
-            logger.info("Showing end prompt")
-            CallPromptPanelController.shared.show(
-                message: message,
-                primaryTitle: String(localized: "Stop and save"),
-                secondaryTitle: String(localized: "Keep recording"),
-                belowIndicator: true,
-                onPrimary: { [weak self] in
-                    guard let self else { return }
-                    let actions = self.policy.userTappedStopAndSave(now: Date())
-                    self.perform(actions)
-                    self.logger.info("User tapped Stop and save")
-                },
-                onSecondary: { [weak self] in
+            // The meeting pill shows this one itself, with a countdown to the automatic stop.
+            logger.notice("Call ended: showing the stop countdown")
+            MeetingIndicatorController.shared.showCallEnded(
+                deadline: Date().addingTimeInterval(policy.endCountdown),
+                onKeep: { [weak self] in
                     guard let self else { return }
                     let actions = self.policy.userTappedKeepRecording(now: Date())
                     self.perform(actions)
-                    self.logger.info("User tapped Keep recording")
+                    self.logger.notice("User tapped Keep recording")
                 }
             )
         }

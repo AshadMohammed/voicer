@@ -6,7 +6,7 @@ struct CallDetectionPolicy {
 
     enum Prompt: Equatable {
         case start(CallSource, displayName: String)   // "<displayName> is on a call. Record it?"
-        case end                                       // "Call ended. Stop and save?"
+        case end                                       // "Call ended, saving in 10s" with Keep recording
     }
 
     enum Action: Equatable {
@@ -18,7 +18,10 @@ struct CallDetectionPolicy {
     }
 
     var startDelay: TimeInterval = 2
-    var endDelay: TimeInterval = 10
+    /// How long the call's sources must be gone from the mic before the call counts as ended.
+    var endDelay: TimeInterval = 5
+    /// How long the "call ended" notice stays up before the recording is stopped and saved.
+    var endCountdown: TimeInterval = 10
     var promptTimeout: TimeInterval = 60
     var browserCheckInterval: TimeInterval = 3
     var browserCheckWindow: TimeInterval = 15
@@ -180,9 +183,9 @@ struct CallDetectionPolicy {
             actions += handleNotNow()
         }
 
-        // Check end-prompt timeout.
-        if case .end = prompt, let shownAt = endPromptShownAt, now.timeIntervalSince(shownAt) >= promptTimeout {
-            actions += handleKeepRecording()
+        // Nobody answered the end notice: stop and save.
+        if case .end = prompt, let shownAt = endPromptShownAt, now.timeIntervalSince(shownAt) >= endCountdown {
+            actions += handleEndCountdownElapsed()
         }
 
         actions += evaluateStartPrompt(now: now)
@@ -254,7 +257,15 @@ struct CallDetectionPolicy {
 
     // MARK: - Private helpers
 
-    /// Handle "Keep recording" or end prompt timeout: keep recording, hide prompt, reset call sources.
+    /// The end notice ran out without "Keep recording": hide it and stop the recording.
+    private mutating func handleEndCountdownElapsed() -> [Action] {
+        guard case .end = prompt else { return [] }
+        prompt = nil
+        endPromptShownAt = nil
+        return [.hidePrompt, .stopRecording]
+    }
+
+    /// Handle "Keep recording": keep recording, hide prompt, reset call sources.
     private mutating func handleKeepRecording() -> [Action] {
         var actions: [Action] = []
         guard case .end = prompt else { return actions }

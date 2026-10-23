@@ -84,8 +84,8 @@ final class CallPromptPanelController {
 
     // MARK: - Positioning
 
-    /// Top right of the main screen's visible frame. Same spot as the meeting pill when
-    /// `belowIndicator` is false; directly under the pill's 60-pt-tall panel when true.
+    /// Top right of the main screen's visible frame. The meeting pill now stands mid-edge, so `belowIndicator`
+    /// (a spot under the old top-right pill) is only kept for callers that still ask for it.
     private static func panelOrigin(size: NSSize, belowIndicator: Bool) -> NSPoint {
         guard let screen = NSScreen.main ?? NSScreen.screens.first else { return .zero }
         let frame = screen.visibleFrame
