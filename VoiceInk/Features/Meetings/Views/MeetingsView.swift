@@ -316,6 +316,7 @@ private struct MeetingsEmptyState: View {
 private struct MeetingsSettingsCard: View {
     let notesFolder: URL
     @AppStorage(CallDetector.settingKey) private var askToRecordCalls = true
+    @AppStorage(MeetingStore.saveAudioToDocumentsKey) private var saveAudioToDocuments = true
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -327,6 +328,16 @@ private struct MeetingsSettingsCard: View {
                     detail: "When Zoom, Teams, FaceTime, Slack, Webex, Discord or a meeting tab in your browser starts using the microphone, Voicer offers to record. It never records without a click."
                 ) {
                     Toggle("", isOn: $askToRecordCalls)
+                        .labelsHidden()
+                        .toggleStyle(.switch)
+                        .controlSize(.small)
+                }
+                Rectangle().fill(AppTheme.Palette.line).frame(height: 1)
+                row(
+                    title: "Save meeting audio to Documents",
+                    detail: "After a meeting, keeps one recording of you and the call together beside the note, with the same name."
+                ) {
+                    Toggle("", isOn: $saveAudioToDocuments)
                         .labelsHidden()
                         .toggleStyle(.switch)
                         .controlSize(.small)

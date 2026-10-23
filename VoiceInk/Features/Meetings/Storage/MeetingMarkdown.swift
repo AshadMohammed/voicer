@@ -13,6 +13,21 @@ enum MeetingMarkdown {
         lines.append(headerLine(for: record))
         lines.append("")
 
+        // ── Topic (the generated title, when the note is named after the call app) ──
+        if let topic = record.summary?.title.trimmingCharacters(in: .whitespacesAndNewlines),
+            !topic.isEmpty, topic != record.displayTitle
+        {
+            lines.append("**Topic:** \(topic)")
+            lines.append("")
+        }
+
+        // ── Audio ──────────────────────────────────────────────────────────
+        if let audio = record.savedAudioFileName, !audio.isEmpty {
+            let encoded = audio.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? audio
+            lines.append("**Audio:** [\(audio)](\(encoded))")
+            lines.append("")
+        }
+
         // ── Notes (blockquotes) ────────────────────────────────────────────
         if !record.notes.isEmpty {
             for note in record.notes {

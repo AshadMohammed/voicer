@@ -4,6 +4,7 @@ import Foundation
 ///
 /// Layout:
 /// - Notes  → `~/Documents/Voicer Meetings/<yyyy-MM-dd HHmm> <title>.md`
+/// - Mixed audio → same folder and name as the note, `.m4a` (when "Save meeting audio to Documents" is on)
 /// - Data   → `~/Library/Application Support/com.ashadmohammed.Voicer/Meetings/<uuid>/meeting.json`
 /// - Audio  → same `<uuid>` folder (written by the lead's recorder)
 final class MeetingStore: @unchecked Sendable {
@@ -12,6 +13,14 @@ final class MeetingStore: @unchecked Sendable {
     static let didChangeNotification = Notification.Name("MeetingStoreDidChange")
 
     // MARK: - Defaults
+
+    /// "Save meeting audio to Documents" on the Meetings page. On unless the user turned it off.
+    static let saveAudioToDocumentsKey = "saveMeetingAudioToDocuments"
+
+    static var saveAudioToDocuments: Bool {
+        let defaults = UserDefaults.standard
+        return defaults.object(forKey: saveAudioToDocumentsKey) == nil ? true : defaults.bool(forKey: saveAudioToDocumentsKey)
+    }
 
     static var defaultNotesFolder: URL {
         FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
@@ -103,7 +112,38 @@ final class MeetingStore: @unchecked Sendable {
         notesFolder.appendingPathComponent(record.noteFileName)
     }
 
-    /// Moves the Markdown note to the Trash and deletes the meeting's data folder.
+    /// URL of the mixed audio kept beside the note, if one was saved.
+    func savedAudioURL(for record: MeetingRecord) -> URL? {
+        guard let name = record.savedAudioFileName, !name.isEmpty else { return nil }
+        return notesFolder.appendingPathComponent(name)
+    }
+
+    /// Moves a finished mix into the notes folder as `<note name>.m4a`. Needs the note to have been saved first,
+    /// so the two share a name. Returns the new file name.
+    func adoptSavedAudio(from tempURL: URL, for record: MeetingRecord) throws -> String {
+        var result = ""
+        var moveError: Error?
+        queue.sync {
+            do {
+                let fm = FileManager.default
+                try fm.createDirectory(at: self.notesFolder, withIntermediateDirectories: true)
+                let base = (record.noteFileName as NSString).deletingPathExtension
+                let name = "\(base).m4a"
+                let destination = self.notesFolder.appendingPathComponent(name)
+                if fm.fileExists(atPath: destination.path) {
+                    try fm.removeItem(at: destination)
+                }
+                try fm.moveItem(at: tempURL, to: destination)
+                result = name
+            } catch {
+                moveError = error
+            }
+        }
+        if let moveError { throw moveError }
+        return result
+    }
+
+    /// Moves the Markdown note and the saved audio to the Trash and deletes the meeting's data folder.
     func delete(_ record: MeetingRecord) throws {
         var deleteError: Error?
         queue.sync {
@@ -114,6 +154,10 @@ final class MeetingStore: @unchecked Sendable {
                     if FileManager.default.fileExists(atPath: note.path) {
                         try FileManager.default.trashItem(at: note, resultingItemURL: nil)
                     }
+                }
+                // Trash the mixed audio kept beside the note.
+                if let audio = self.savedAudioURL(for: record), FileManager.default.fileExists(atPath: audio.path) {
+                    try FileManager.default.trashItem(at: audio, resultingItemURL: nil)
                 }
                 // Remove the data folder entirely.
                 let folder = self.dataFolder.appendingPathComponent(record.id.uuidString)

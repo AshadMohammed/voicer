@@ -47,5 +47,44 @@ enum MeetingAudioArchiver {
 
         return outputURL
     }
-}
 
+    /// Mixes the microphone ("You") and call ("Speaker") tracks into one AAC `.m4a`, both audible. The tracks are
+    /// left untouched. Either track may be missing; with one, the file is that track alone.
+    /// - Returns: true when `outputURL` was written.
+    static func mixdown(microphone: URL?, call: URL?, to outputURL: URL) async -> Bool {
+        let composition = AVMutableComposition()
+        var insertedTracks = 0
+
+        for url in [microphone, call].compactMap({ $0 }) {
+            let asset = AVURLAsset(url: url)
+            guard
+                let source = try? await asset.loadTracks(withMediaType: .audio).first,
+                let duration = try? await asset.load(.duration),
+                duration.seconds > 0,
+                let track = composition.addMutableTrack(
+                    withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid)
+            else { continue }
+            do {
+                try track.insertTimeRange(CMTimeRange(start: .zero, duration: duration), of: source, at: .zero)
+                insertedTracks += 1
+            } catch {
+                logger.error("Could not add \(url.lastPathComponent, privacy: .public) to the mix: \(error.localizedDescription, privacy: .public)")
+            }
+        }
+        guard insertedTracks > 0 else { return false }
+
+        try? FileManager.default.removeItem(at: outputURL)
+        do {
+            guard let session = AVAssetExportSession(asset: composition, presetName: AVAssetExportPresetAppleM4A) else {
+                logger.error("No AAC exporter for the meeting mix")
+                return false
+            }
+            try await session.export(to: outputURL, as: .m4a)
+            return true
+        } catch {
+            logger.error("Meeting mix export failed: \(error.localizedDescription, privacy: .public)")
+            try? FileManager.default.removeItem(at: outputURL)
+            return false
+        }
+    }
+}

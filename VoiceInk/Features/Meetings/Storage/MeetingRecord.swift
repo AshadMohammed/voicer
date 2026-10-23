@@ -17,6 +17,8 @@ struct MeetingRecord: Codable, Identifiable, Sendable, Equatable {
     var audioFileNames: [String]
     /// The `.md` file name inside the notes folder. Empty string until first save.
     var noteFileName: String
+    /// The mixed `.m4a` kept beside the note in the notes folder, named like the note. Nil when none was saved.
+    var savedAudioFileName: String?
 
     // MARK: - Derived
 
@@ -48,7 +50,8 @@ struct MeetingRecord: Codable, Identifiable, Sendable, Equatable {
         utterances: [MeetingUtterance] = [],
         notes: [String] = [],
         audioFileNames: [String] = [],
-        noteFileName: String = ""
+        noteFileName: String = "",
+        savedAudioFileName: String? = nil
     ) {
         self.id = id
         self.title = title
@@ -62,6 +65,7 @@ struct MeetingRecord: Codable, Identifiable, Sendable, Equatable {
         self.notes = notes
         self.audioFileNames = audioFileNames
         self.noteFileName = noteFileName
+        self.savedAudioFileName = savedAudioFileName
     }
 
     // MARK: - Codable (tolerates missing optional fields from older JSON)
@@ -69,7 +73,7 @@ struct MeetingRecord: Codable, Identifiable, Sendable, Equatable {
     enum CodingKeys: String, CodingKey {
         case id, title, startedAt, duration, source
         case importedFileName, summary, summaryUnavailableReason
-        case utterances, notes, audioFileNames, noteFileName
+        case utterances, notes, audioFileNames, noteFileName, savedAudioFileName
     }
 
     init(from decoder: Decoder) throws {
@@ -86,6 +90,7 @@ struct MeetingRecord: Codable, Identifiable, Sendable, Equatable {
         notes                   = try c.decodeIfPresent([String].self, forKey: .notes) ?? []
         audioFileNames          = try c.decodeIfPresent([String].self, forKey: .audioFileNames) ?? []
         noteFileName            = try c.decodeIfPresent(String.self,   forKey: .noteFileName) ?? ""
+        savedAudioFileName      = try c.decodeIfPresent(String.self,   forKey: .savedAudioFileName)
     }
 }
 

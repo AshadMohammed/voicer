@@ -11,7 +11,7 @@ final class MeetingAudioAnalyzer {
         var errorDescription: String? {
             switch self {
             case .speechModelMissing:
-                return "No Parakeet model is downloaded. Download one in AI Models, then try again."
+                return "No Parakeet model is downloaded. Download Parakeet Ultra in Settings, then try again."
             }
         }
     }

@@ -123,6 +123,9 @@ struct MeetingDetailView: View {
 
                 Menu {
                     Button("Show Note in Finder") { NSWorkspace.shared.activateFileViewerSelecting([noteURL]) }
+                    if let audioURL = MeetingsCoordinator.shared.store.savedAudioURL(for: meeting) {
+                        Button("Open Audio") { NSWorkspace.shared.open(audioURL) }
+                    }
                     Button("Show Recording in Finder") {
                         let folder = MeetingsCoordinator.shared.store.dataFolder
                             .appendingPathComponent(meeting.id.uuidString, isDirectory: true)

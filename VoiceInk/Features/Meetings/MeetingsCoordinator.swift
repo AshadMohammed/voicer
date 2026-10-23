@@ -48,6 +48,8 @@ final class MeetingsCoordinator: ObservableObject {
     private var modelContext: ModelContext?
     private var processingTail: Task<Void, Never>?
     private var storeObserver: NSObjectProtocol?
+    /// What the call was, noted when the recording starts: the title the meeting is saved under.
+    private var recordingCallName: String?
 
     private init() {
         capture.onProblem = { message in
@@ -101,6 +103,7 @@ final class MeetingsCoordinator: ObservableObject {
             // The same microphone dictation uses, so a meeting hears what the user set up.
             let microphone = AudioDeviceManager.shared.getCurrentDevice()
             try capture.start(folder: folder, microphoneDeviceID: microphone == 0 ? nil : microphone)
+            recordingCallName = CallDetector.shared.currentCallName
             recordingState = .recording(id: id, startedAt: Date())
             MeetingIndicatorController.shared.show()
             logger.notice("Meeting recording started")
@@ -128,8 +131,12 @@ final class MeetingsCoordinator: ObservableObject {
             let title = String(
                 format: String(localized: "Meeting at %@"),
                 startedAt.formatted(date: .omitted, time: .shortened))
+            // Named after the call app; if the call wasn't recognised at the start, try once more now.
+            let callName = recordingCallName ?? CallDetector.shared.currentCallName
+            recordingCallName = nil
             enqueue(
                 Job(id: id, title: title, stage: String(localized: "Waiting to start")),
+                callName: callName,
                 audio: .tracks(microphone: result.microphoneURL, call: result.callURL),
                 source: .recorded,
                 startedAt: startedAt,
@@ -171,6 +178,7 @@ final class MeetingsCoordinator: ObservableObject {
     /// double the memory for no gain.
     private func enqueue(
         _ job: Job,
+        callName: String? = nil,
         audio: MeetingAudio,
         source: MeetingRecord.Source,
         startedAt: Date,
@@ -183,13 +191,14 @@ final class MeetingsCoordinator: ObservableObject {
         processingTail = Task { [weak self] in
             await previous?.value
             await self?.process(
-                job, audio: audio, source: source, startedAt: startedAt, knownDuration: knownDuration,
+                job, callName: callName, audio: audio, source: source, startedAt: startedAt, knownDuration: knownDuration,
                 warnings: warnings, importedFileName: importedFileName)
         }
     }
 
     private func process(
         _ job: Job,
+        callName: String?,
         audio: MeetingAudio,
         source: MeetingRecord.Source,
         startedAt: Date,
@@ -215,7 +224,8 @@ final class MeetingsCoordinator: ObservableObject {
                 switch result.summary {
                 case .summary(let summary):
                     record.summary = summary
-                    record.title = summary.title
+                    // A recorded call keeps the call app's name; the generated title is shown as the note's topic.
+                    record.title = source == .recorded ? "" : summary.title
                 case .skipped(let reason):
                     record.summaryUnavailableReason = reason
                 }
@@ -238,7 +248,7 @@ final class MeetingsCoordinator: ObservableObject {
         } else {
             guard source == .recorded else {
                 NotificationManager.shared.showNotification(
-                    title: String(localized: "Download a Parakeet model in AI Models to import meetings."),
+                    title: String(localized: "Download Parakeet Ultra in Settings to import meetings."),
                     type: .warning,
                     duration: 6
                 )
@@ -247,6 +257,24 @@ final class MeetingsCoordinator: ObservableObject {
             record.notes.append(
                 String(localized: "No Parakeet model is downloaded, so this meeting wasn't transcribed. The audio is kept with the meeting."))
             record.summaryUnavailableReason = String(localized: "There is no transcript to summarise.")
+        }
+
+        if source == .recorded {
+            record.title = callName ?? String(localized: "Meeting")
+        }
+
+        // One mixed file (you and the call together) for the Documents folder, made before the tracks are compressed.
+        var mixedAudioURL: URL?
+        if case .tracks(let microphone, let call) = audio, MeetingStore.saveAudioToDocuments {
+            update(jobID, stage: String(localized: "Saving audio"))
+            if let folder = try? store.meetingFolder(for: record.id) {
+                let tempURL = folder.appendingPathComponent("mixed.m4a")
+                if await MeetingAudioArchiver.mixdown(microphone: microphone, call: call, to: tempURL) {
+                    mixedAudioURL = tempURL
+                } else {
+                    record.notes.append(String(localized: "Voicer couldn't save the combined meeting audio to Documents."))
+                }
+            }
         }
 
         if case .tracks(let microphone, let call) = audio {
@@ -268,6 +296,17 @@ final class MeetingsCoordinator: ObservableObject {
                 duration: 6
             )
             return
+        }
+
+        // The note now has its file name, so the audio can take the same one and the note can link to it.
+        if let mixedAudioURL {
+            do {
+                record.savedAudioFileName = try store.adoptSavedAudio(from: mixedAudioURL, for: record)
+                try store.save(&record)
+            } catch {
+                logger.error("Saving the meeting audio to Documents failed: \(error.localizedDescription, privacy: .public)")
+                try? FileManager.default.removeItem(at: mixedAudioURL)
+            }
         }
         addHistoryEntry(for: record, modelName: "Parakeet")
 

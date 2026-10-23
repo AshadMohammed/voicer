@@ -20,6 +20,13 @@ final class CallDetector {
     private var performing = false
     private var deferredActions: [CallDetectionPolicy.Action] = []
 
+    /// What to call a meeting recorded right now: the call app, the meeting site in a browser, or the browser.
+    /// Nil when nothing recognisable is using the microphone.
+    private(set) var currentCallName: String?
+    private var activeSources = Set<CallSource>()
+    /// Meeting sites already read from each browser's tab, by browser ID.
+    private var browserSiteNames: [String: String] = [:]
+
     /// Bundle IDs we've already logged, to avoid repeating the log every time.
     private var loggedBundleIDs = Set<String>()
 
@@ -133,8 +140,22 @@ final class CallDetector {
             }
         }
 
+        activeSources = sources
+        if sources.isEmpty { browserSiteNames = [:] }
+        updateCurrentCallName()
+
         let actions = policy.micSourcesChanged(sources, now: Date())
         perform(actions)
+    }
+
+    private func updateCurrentCallName() {
+        if let app = activeSources.filter({ $0.kind == .app }).sorted(by: { $0.name < $1.name }).first {
+            currentCallName = app.name
+        } else if let browser = activeSources.sorted(by: { $0.name < $1.name }).first {
+            currentCallName = browserSiteNames[browser.id] ?? browser.name
+        } else {
+            currentCallName = nil
+        }
     }
 
     // MARK: - Recording state
@@ -259,6 +280,8 @@ final class CallDetector {
                 // A thrown error = nil site.
                 site = nil
             }
+            if let site { self.browserSiteNames[source.id] = site }
+            self.updateCurrentCallName()
             let actions = self.policy.browserTabChecked(source, meetingSite: site, now: Date())
             self.perform(actions)
         }
