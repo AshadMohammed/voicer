@@ -130,16 +130,8 @@ class TranscriptionModelManager: ObservableObject {
     func refreshAllAvailableModels() {
         let currentSelection = currentTranscriptionModel?.selectionKey
             ?? UserDefaults.standard.string(forKey: "CurrentTranscriptionModel")
-        var models = TranscriptionModelRegistry.models
-
-        for whisperModel in whisperModelManager?.availableModels ?? [] {
-            if !models.contains(where: { $0.name == whisperModel.name }) {
-                let importedModel = ImportedWhisperModel(fileBaseName: whisperModel.name)
-                models.append(importedModel)
-            }
-        }
-
-        allAvailableModels = models
+        // Imported Whisper files are no longer offered, so only the registry's models are listed.
+        allAvailableModels = TranscriptionModelRegistry.models
 
         if let currentSelection,
             let updatedModel = TranscriptionModelRegistry.model(forSelectionKey: currentSelection, in: allAvailableModels)

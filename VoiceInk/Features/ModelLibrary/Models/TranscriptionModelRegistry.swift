@@ -2,9 +2,16 @@ import Foundation
 
 enum TranscriptionModelRegistry {
 
+    /// The small model Voicer installs on its own, and the larger one offered in Settings.
+    static let defaultModelName = "sensevoice-small"
+    static let accurateModelName = "parakeet-ultra"
+
+    /// Voicer offers only these two. The other providers stay in the code so upstream merges stay easy,
+    /// but nothing outside this list reaches a picker, a mode or the runtime.
+    private static let offeredModelNames = [defaultModelName, accurateModelName]
+
     static var models: [any TranscriptionModel] {
-        let cloudModels: [any TranscriptionModel] = CloudProviderRegistry.allProviders.flatMap { $0.models }
-        return predefinedModels + cloudModels + CustomCloudModelManager.shared.customModels
+        offeredModelNames.compactMap { name in predefinedModels.first { $0.name == name } }
     }
 
     static func model(forSelectionKey key: String, in models: [any TranscriptionModel]) -> (any TranscriptionModel)? {
