@@ -3,7 +3,7 @@ import SwiftUI
 
 struct OnboardingView: View {
     @Binding var hasCompletedOnboardingV2: Bool
-    @ObservedObject private var cppModelManager = TranscribeCppModelManager.shared
+    @EnvironmentObject var fluidAudioModelManager: FluidAudioModelManager
     @ObservedObject private var speechModelController = SpeechModelController.shared
     @EnvironmentObject var transcriptionModelManager: TranscriptionModelManager
     @EnvironmentObject var aiService: AIService
@@ -13,7 +13,7 @@ struct OnboardingView: View {
 
     var body: some View {
         let isTranscriptionModelDownloaded = coordinator.isTranscriptionModelDownloaded(
-            using: cppModelManager
+            using: fluidAudioModelManager
         )
         let isTranscriptionSetupReady = coordinator.isTranscriptionSetupReady(
             isTranscriptionModelDownloaded: isTranscriptionModelDownloaded
@@ -56,13 +56,13 @@ struct OnboardingView: View {
                         model: coordinator.requiredTranscriptionModel,
                         isDownloaded: isTranscriptionModelDownloaded,
                         isDownloading: coordinator.requiredTranscriptionModel.map {
-                            cppModelManager.isModelDownloading($0)
+                            fluidAudioModelManager.isFluidAudioModelDownloading($0)
                         } ?? false,
                         downloadStatus: coordinator.requiredTranscriptionModel.flatMap {
-                            cppModelManager.downloadStatus(for: $0)
+                            fluidAudioModelManager.downloadStatus(for: $0)
                         },
                         didFail: speechModelController.autoInstallFailed,
-                        onRetry: speechModelController.retryAutoInstall,
+                        onRetry: speechModelController.retryInstall,
                         onBack: coordinator.flow.goToMicrophoneStep,
                         onContinue: {
                             coordinator.flow.goToAPIStep(

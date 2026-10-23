@@ -367,9 +367,9 @@ final class OnboardingCoordinator: ObservableObject {
         return onboardingProviderOptions.first ?? .groq
     }
 
-    var requiredTranscriptionModel: TranscribeCppModel? {
+    var requiredTranscriptionModel: FluidAudioModel? {
         TranscriptionModelRegistry.models
-            .compactMap { $0 as? TranscribeCppModel }
+            .compactMap { $0 as? FluidAudioModel }
             .first { $0.name == TranscriptionModelRegistry.defaultModelName }
     }
 
@@ -399,9 +399,9 @@ final class OnboardingCoordinator: ObservableObject {
         )
     }
 
-    func isTranscriptionModelDownloaded(using modelManager: TranscribeCppModelManager) -> Bool {
+    func isTranscriptionModelDownloaded(using modelManager: FluidAudioModelManager) -> Bool {
         guard let requiredTranscriptionModel else { return false }
-        return modelManager.isModelDownloaded(requiredTranscriptionModel)
+        return modelManager.isFluidAudioModelDownloaded(requiredTranscriptionModel)
     }
 
     func isTranscriptionSetupReady(isTranscriptionModelDownloaded: Bool) -> Bool {

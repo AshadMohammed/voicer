@@ -3,10 +3,10 @@ import SwiftUI
 /// Voicer installs its own speech model, so this step only shows the download and waits for it. There is no choice to make.
 struct OnboardingModelScreen: View {
     let contentMaxWidth: CGFloat
-    let model: TranscribeCppModel?
+    let model: FluidAudioModel?
     let isDownloaded: Bool
     let isDownloading: Bool
-    let downloadStatus: TranscribeCppDownloadStatus?
+    let downloadStatus: FluidAudioDownloadStatus?
     let didFail: Bool
     let onRetry: () -> Void
     let onBack: () -> Void
@@ -20,11 +20,11 @@ struct OnboardingModelScreen: View {
             VStack(alignment: .leading, spacing: 14) {
                 HStack(alignment: .firstTextBaseline) {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text(model?.displayName ?? "SenseVoice Small")
+                        Text(model?.displayName ?? "Parakeet Ultra")
                             .font(.system(size: 17, weight: .semibold))
                             .foregroundColor(AppTheme.Text.primary)
 
-                        Text("Fast transcription that runs privately on your Mac.")
+                        Text("Accurate transcription that runs privately on your Mac.")
                             .font(.system(size: 12))
                             .foregroundColor(AppTheme.Text.secondary)
                     }
@@ -69,7 +69,7 @@ struct OnboardingModelScreen: View {
         }
     }
 
-    private func progressPanel(_ status: TranscribeCppDownloadStatus) -> some View {
+    private func progressPanel(_ status: FluidAudioDownloadStatus) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Text(status.message)
