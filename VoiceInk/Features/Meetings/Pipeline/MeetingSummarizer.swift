@@ -23,6 +23,19 @@ enum MeetingSummaryOutcome: Sendable {
 enum MeetingSummarizer {
     private static let logger = Logger(subsystem: "com.ashadmohammed.voicer", category: "MeetingSummarizer")
 
+    /// Saved in a note when Apple's model was still downloading; a meeting with this reason is summarised later.
+    static let modelNotReadyReason = "Apple's on-device model is still downloading. Summaries will work once it's ready."
+
+    /// True when Apple's on-device model can write a summary right now.
+    static var isModelReady: Bool {
+        #if canImport(FoundationModels)
+            if #available(macOS 26.0, *) {
+                if case .available = SystemLanguageModel.default.availability { return true }
+            }
+        #endif
+        return false
+    }
+
     static func summarize(transcript: String) async -> MeetingSummaryOutcome {
         let trimmed = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return .skipped(reason: "Nothing was said, so there is nothing to summarise.") }
@@ -105,8 +118,7 @@ enum MeetingSummarizer {
                 return .skipped(
                     reason: "Turn on Apple Intelligence in System Settings to get summaries. The transcript is below.")
             case .unavailable(.modelNotReady):
-                return .skipped(
-                    reason: "Apple's on-device model is still downloading. Summaries will work once it's ready.")
+                return .skipped(reason: MeetingSummarizer.modelNotReadyReason)
             case .unavailable:
                 return .skipped(reason: "Apple's on-device model isn't available right now, so there is no summary.")
             }

@@ -28,7 +28,13 @@ struct MeetingsView: View {
         .onChange(of: coordinator.meetings) { _, meetings in
             openRequestedMeeting()
             // A meeting deleted from its detail page closes it.
-            if let open = openMeeting, !meetings.contains(where: { $0.id == open.id }) { openMeeting = nil }
+            if let open = openMeeting {
+                if let fresh = meetings.first(where: { $0.id == open.id }) {
+                    if fresh != open { openMeeting = fresh }
+                } else {
+                    openMeeting = nil
+                }
+            }
         }
     }
 

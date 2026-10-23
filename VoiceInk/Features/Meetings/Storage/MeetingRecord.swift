@@ -27,6 +27,11 @@ struct MeetingRecord: Codable, Identifiable, Sendable, Equatable {
         utterances.map { "\($0.speaker): \($0.text)" }.joined(separator: "\n")
     }
 
+    /// True when the summary was skipped only because Apple's model was still downloading.
+    var isWaitingForSummaryModel: Bool {
+        summary == nil && !utterances.isEmpty && summaryUnavailableReason == MeetingSummarizer.modelNotReadyReason
+    }
+
     /// `title` when non-empty; otherwise a dated fallback like "Meeting, 20 Oct 16:30".
     var displayTitle: String {
         let trimmed = title.trimmingCharacters(in: .whitespaces)

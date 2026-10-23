@@ -28,6 +28,8 @@ final class MeetingsCoordinator: ObservableObject {
     @Published private(set) var recordingState: RecordingState = .idle
     @Published private(set) var jobs: [Job] = []
     @Published private(set) var meetings: [MeetingRecord] = []
+    /// Meetings whose summary is being written right now, or is waiting its turn.
+    @Published private(set) var summarisingIDs = Set<UUID>()
 
     var isRecording: Bool {
         if case .recording = recordingState { return true }
@@ -48,6 +50,7 @@ final class MeetingsCoordinator: ObservableObject {
     private var modelContext: ModelContext?
     private var processingTail: Task<Void, Never>?
     private var storeObserver: NSObjectProtocol?
+    private var activationObserver: NSObjectProtocol?
     /// What the call was, noted when the recording starts: the title the meeting is saved under.
     private var recordingCallName: String?
 
@@ -67,14 +70,26 @@ final class MeetingsCoordinator: ObservableObject {
     func configure(modelContext: ModelContext) {
         self.modelContext = modelContext
         CallDetector.shared.start()
+        // Meetings saved while Apple's model was still downloading get their summary once it's ready.
+        Task {
+            await loadMeetings()
+            summarisePendingMeetings()
+        }
+        guard activationObserver == nil else { return }
+        activationObserver = NotificationCenter.default.addObserver(
+            forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.summarisePendingMeetings() }
+        }
     }
 
     func reloadMeetings() {
+        Task { await loadMeetings() }
+    }
+
+    private func loadMeetings() async {
         let store = self.store
-        Task {
-            let loaded = await Task.detached { store.loadAll() }.value
-            self.meetings = loaded
-        }
+        meetings = await Task.detached { store.loadAll() }.value
     }
 
     // MARK: - Recording
@@ -328,6 +343,25 @@ final class MeetingsCoordinator: ObservableObject {
     /// that Paste Last pastes, unless nothing was dictated since.
     private func addHistoryEntry(for record: MeetingRecord, modelName: String) {
         guard let modelContext else { return }
+        let entry = Transcription(
+            text: historyText(for: record),
+            duration: record.duration,
+            transcriptionModelName: modelName,
+            modeName: String(localized: "Meeting"),
+            modeEmoji: "👥",
+            transcriptionStatus: .completed
+        )
+        entry.timestamp = record.startedAt
+        modelContext.insert(entry)
+        do {
+            try modelContext.save()
+        } catch {
+            logger.error("Couldn't add the meeting to History: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
+    /// The text of a meeting's History entry: title, summary, action items and transcript.
+    private func historyText(for record: MeetingRecord) -> String {
         var lines = [String(format: String(localized: "Meeting: %@"), record.displayTitle)]
         if let summary = record.summary {
             if !summary.keyPoints.isEmpty {
@@ -346,22 +380,88 @@ final class MeetingsCoordinator: ObservableObject {
             lines.append(String(localized: "Transcript"))
             lines.append(record.transcriptText)
         }
+        return lines.joined(separator: "\n")
+    }
 
-        let entry = Transcription(
-            text: lines.joined(separator: "\n"),
-            duration: record.duration,
-            transcriptionModelName: modelName,
-            modeName: String(localized: "Meeting"),
-            modeEmoji: "👥",
-            transcriptionStatus: .completed
-        )
-        entry.timestamp = record.startedAt
-        modelContext.insert(entry)
-        do {
-            try modelContext.save()
-        } catch {
-            logger.error("Couldn't add the meeting to History: \(error.localizedDescription, privacy: .public)")
+    /// Rewrites the meeting's History entry (found by its start time) after a summary was added later.
+    private func refreshHistoryEntry(for record: MeetingRecord) {
+        guard let modelContext else { return }
+        let started = record.startedAt
+        let descriptor = FetchDescriptor<Transcription>(predicate: #Predicate { $0.timestamp == started })
+        guard let entries = try? modelContext.fetch(descriptor) else { return }
+        let modeName = String(localized: "Meeting")
+        for entry in entries where entry.modeName == modeName {
+            entry.text = historyText(for: record)
         }
+        try? modelContext.save()
+    }
+
+    // MARK: - Summaries
+
+    /// Summarises every meeting that was saved without a summary only because Apple's model was still downloading.
+    func summarisePendingMeetings() {
+        guard MeetingSummarizer.isModelReady else { return }
+        for record in meetings where record.isWaitingForSummaryModel { summarise(record, userAsked: false) }
+    }
+
+    /// Writes (or rewrites) a meeting's summary and updates its note. Runs in line with the transcription jobs,
+    /// so Apple's model and the speech models are never loaded at the same time.
+    func summarise(_ record: MeetingRecord, userAsked: Bool = true) {
+        guard !record.utterances.isEmpty, !summarisingIDs.contains(record.id) else { return }
+        summarisingIDs.insert(record.id)
+        let id = record.id
+        let previous = processingTail
+        processingTail = Task { [weak self] in
+            await previous?.value
+            await self?.writeSummary(for: id, userAsked: userAsked)
+        }
+    }
+
+    private func writeSummary(for id: UUID, userAsked: Bool) async {
+        defer { summarisingIDs.remove(id) }
+        let store = self.store
+        let saved = await Task.detached { store.loadAll() }.value
+        guard var record = saved.first(where: { $0.id == id }), !record.utterances.isEmpty else { return }
+
+        let outcome = await MeetingSummarizer.summarize(transcript: MeetingTranscriptAssembler.plainText(record.utterances))
+        switch outcome {
+        case .summary(let summary):
+            record.summary = summary
+            record.summaryUnavailableReason = nil
+            // A recording keeps the call app's name; an import is named after what was said.
+            if record.source == .imported, record.title.trimmingCharacters(in: .whitespaces).isEmpty {
+                record.title = summary.title
+            }
+        case .skipped(let reason):
+            if record.summary == nil, record.summaryUnavailableReason != reason {
+                record.summaryUnavailableReason = reason
+            } else if userAsked {
+                NotificationManager.shared.showNotification(title: reason, type: .warning, duration: 6)
+                return
+            } else {
+                return
+            }
+        }
+
+        do {
+            try store.save(&record)
+        } catch {
+            logger.error("Saving the new summary failed: \(error.localizedDescription, privacy: .public)")
+            NotificationManager.shared.showNotification(
+                title: String(format: String(localized: "Couldn't save the summary: %@"), error.localizedDescription),
+                type: .error,
+                duration: 6
+            )
+            return
+        }
+        refreshHistoryEntry(for: record)
+        guard record.summary != nil, !userAsked else { return }
+        NotificationManager.shared.showNotification(
+            title: String(format: String(localized: "Summary added: %@"), record.displayTitle),
+            type: .success,
+            duration: 5,
+            onTap: { MeetingsCoordinator.shared.openMeetingsPage(selecting: id) }
+        )
     }
 
     // MARK: - Meetings page

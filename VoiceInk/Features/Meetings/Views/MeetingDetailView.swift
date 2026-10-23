@@ -5,6 +5,7 @@ import SwiftUI
 struct MeetingDetailView: View {
     let meeting: MeetingRecord
     let onBack: () -> Void
+    @ObservedObject private var coordinator = MeetingsCoordinator.shared
     @State private var confirmingDelete = false
     @State private var copied = false
 
@@ -43,7 +44,11 @@ struct MeetingDetailView: View {
                 }
 
                 section("Summary") {
-                    if let summary = meeting.summary, !summary.keyPoints.isEmpty {
+                    if isSummarising {
+                        Label("Writing the summary…", systemImage: "hourglass")
+                            .font(.appSans(13))
+                            .foregroundStyle(AppTheme.Palette.muted)
+                    } else if let summary = meeting.summary, !summary.keyPoints.isEmpty {
                         bullets(summary.keyPoints, marker: "circle.fill", markerSize: 5)
                     } else {
                         Text(meeting.summaryUnavailableReason ?? String(localized: "No summary for this meeting."))
@@ -82,6 +87,10 @@ struct MeetingDetailView: View {
             .padding(.horizontal, 40)
             .padding(.top, 52)
             .padding(.bottom, 32)
+        }
+        .onAppear {
+            // Apple's model may have finished downloading since this meeting was saved.
+            if meeting.isWaitingForSummaryModel { coordinator.summarisePendingMeetings() }
         }
         .confirmationDialog(
             "Delete this meeting?", isPresented: $confirmingDelete
@@ -133,6 +142,9 @@ struct MeetingDetailView: View {
                     }
                     .disabled(meeting.audioFileNames.isEmpty)
                     Divider()
+                    Button("Summarise again") { coordinator.summarise(meeting) }
+                        .disabled(meeting.utterances.isEmpty || isSummarising)
+                    Divider()
                     Button("Delete Meeting…", role: .destructive) { confirmingDelete = true }
                 } label: {
                     Image(systemName: "ellipsis")
@@ -148,6 +160,8 @@ struct MeetingDetailView: View {
             }
         }
     }
+
+    private var isSummarising: Bool { coordinator.summarisingIDs.contains(meeting.id) }
 
     private var metaLine: String {
         var parts = [MeetingDuration.short(meeting.duration)]
