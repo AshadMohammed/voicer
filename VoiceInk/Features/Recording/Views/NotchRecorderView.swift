@@ -180,7 +180,6 @@ struct NotchRecorderView<S: RecorderStateProvider & ObservableObject>: View {
                         action: onRecordButtonTapped
                     )
                 }
-                RecorderModeButton(buttonSize: 20, padding: EdgeInsets())
                 Spacer(minLength: 0)
             }
             .padding(.leading, sideEdgePadding)

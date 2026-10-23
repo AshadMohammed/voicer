@@ -2,12 +2,13 @@ import Foundation
 
 /// Opens a main-window tab from contexts with no view hierarchy, such as a notification action.
 enum ModeSetupNavigator {
+    /// The Modes and AI Models pages are gone; the speech model now lives in Settings.
     static func openModesSettings() {
-        MainWindowNavigator.open(destination: .modes)
+        MainWindowNavigator.open(destination: .settings)
     }
 
     static func openModelsSettings() {
-        MainWindowNavigator.open(destination: .models)
+        MainWindowNavigator.open(destination: .settings)
     }
 }
 

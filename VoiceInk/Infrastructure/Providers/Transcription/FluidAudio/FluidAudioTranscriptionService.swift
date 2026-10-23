@@ -98,7 +98,7 @@ class FluidAudioTranscriptionService: TranscriptionService {
             let cacheDirectory = AsrModels.defaultCacheDirectory(for: version)
             guard AsrModels.modelsExist(at: cacheDirectory, version: version) else {
                 throw AsrModelsError.loadingFailed(
-                    "Parakeet model files are incomplete. Download the model from AI Models."
+                    "Parakeet model files are incomplete. Download the model again from Settings."
                 )
             }
             return try await AsrModels.load(

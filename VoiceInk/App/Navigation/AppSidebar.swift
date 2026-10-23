@@ -138,12 +138,10 @@ private extension ViewType {
 
     static let primaryItems: [ViewType] = [
         .dashboard,
-        .modes,
         .transcribeAudio,
         .history,
         .meetings,
         .dictionary,
-        .models,
         .audio,
     ]
 
@@ -166,8 +164,6 @@ private extension ViewType {
         case .transcribeAudio: return "waveform"
         case .history: return "clock"
         case .meetings: return "person.2"
-        case .models: return "cpu"
-        case .modes: return "slider.horizontal.3"
         case .audio: return "mic"
         case .dictionary: return "character.book.closed"
         case .settings: return "gearshape"

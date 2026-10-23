@@ -1059,12 +1059,12 @@ private struct DashboardNoModesReminder: View {
             .frame(width: 34, height: 34)
 
             VStack(alignment: .leading, spacing: 3) {
-                Text("Set Up a Mode")
+                Text("Speech Model Needed")
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(.primary)
                     .lineLimit(1)
 
-                Text("Voicer needs at least one mode to record. Create one to start dictating.")
+                Text("Voicer has no speech model set up yet. Open Settings to choose one and start dictating.")
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
@@ -1072,9 +1072,9 @@ private struct DashboardNoModesReminder: View {
 
             Spacer(minLength: 12)
 
-            Button("Manage Modes", action: onOpenModes)
+            Button("Open Settings", action: onOpenModes)
                 .controlSize(.small)
-                .help("Open Modes settings")
+                .help("Open Settings")
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)

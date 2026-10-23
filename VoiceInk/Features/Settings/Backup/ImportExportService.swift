@@ -390,7 +390,7 @@ class ImportExportService {
                     "\n\n"
                     + String(
                         localized:
-                            "IMPORTANT: If you were using AI enhancement features, please make sure to reconfigure your API keys in the AI Models section."
+                            "IMPORTANT: If you were using AI enhancement features, please make sure to reconfigure your API keys in Settings."
                     )
             }
             informativeText +=
@@ -407,7 +407,7 @@ class ImportExportService {
                 NotificationCenter.default.post(
                     name: .navigateToDestination,
                     object: nil,
-                    userInfo: ["destination": "AI Models"]
+                    userInfo: ["destination": "Settings"]
                 )
             }
         }

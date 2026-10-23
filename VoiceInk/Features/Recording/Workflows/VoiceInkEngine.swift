@@ -449,7 +449,7 @@ class VoiceInkEngine: NSObject, ObservableObject {
         case .noMode:
             return (
                 String(localized: "No mode configured"),
-                String(localized: "Manage Modes"),
+                String(localized: "Open Settings"),
                 ModeSetupNavigator.openModesSettings
             )
         case .noSelection(let mode):
@@ -458,7 +458,7 @@ class VoiceInkEngine: NSObject, ObservableObject {
                     format: String(localized: "No transcription model is selected for the '%@' mode"),
                     mode.name
                 ),
-                String(localized: "Manage Modes"),
+                String(localized: "Open Settings"),
                 ModeSetupNavigator.openModesSettings
             )
         case .modelNotFound(let mode):
@@ -467,7 +467,7 @@ class VoiceInkEngine: NSObject, ObservableObject {
                     format: String(localized: "The transcription model selected for the '%@' mode is unavailable"),
                     mode.name
                 ),
-                String(localized: "Manage Modes"),
+                String(localized: "Open Settings"),
                 ModeSetupNavigator.openModesSettings
             )
         case .unavailable(let mode, let model), .available(let mode, let model):
@@ -477,7 +477,7 @@ class VoiceInkEngine: NSObject, ObservableObject {
                     model.displayName,
                     mode.name
                 ),
-                String(localized: "Manage AI Models"),
+                String(localized: "Open Settings"),
                 ModeSetupNavigator.openModelsSettings
             )
         }
@@ -489,7 +489,7 @@ class VoiceInkEngine: NSObject, ObservableObject {
         if !ModeManager.shared.hasEnabledConfiguration {
             await failRecordingPreflight(
                 title: String(localized: "No mode configured"),
-                actionLabel: String(localized: "Manage Modes"),
+                actionLabel: String(localized: "Open Settings"),
                 action: ModeSetupNavigator.openModesSettings
             )
             return false
