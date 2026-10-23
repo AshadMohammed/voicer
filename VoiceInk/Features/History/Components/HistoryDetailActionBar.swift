@@ -43,7 +43,6 @@ struct HistoryDetailActionBar: View {
 
     var body: some View {
         HStack(spacing: 8) {
-            modeButton
             promptButton
             retryButton
             finderButton

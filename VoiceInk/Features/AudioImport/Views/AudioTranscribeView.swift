@@ -170,8 +170,6 @@ struct AudioTranscribeView: View {
 
             Spacer()
 
-            modePicker
-
             if transcriptionManager.isProcessingQueue {
                 Button {
                     transcriptionManager.cancelProcessing()

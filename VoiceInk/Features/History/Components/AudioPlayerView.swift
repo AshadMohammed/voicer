@@ -425,8 +425,6 @@ struct AudioPlayerView: View {
                     .buttonStyle(.plain)
                     .help("Playback speed")
 
-                    modeSelectorButton
-
                     CircleIconButton(
                         icon: playerManager.isPlaying ? "pause.fill" : "play.fill",
                         action: { playerManager.isPlaying ? playerManager.pause() : playerManager.play() }
