@@ -1,14 +1,34 @@
 import AppKit
+import Combine
 import SwiftUI
 
-/// The small "recording a meeting" pill. It sits at the top right of the screen, away from the dictation pill
-/// at the bottom and the notch recorder at the top centre, and can be dragged anywhere.
+/// What the meeting pill is showing, shared between the panel and its view.
+@MainActor
+final class MeetingPillModel: ObservableObject {
+    /// The mouse is over the pill, so the controls are showing.
+    @Published var isHovering = false
+    /// Folded into a small tab at the screen edge. The recording carries on.
+    @Published var isCollapsed = false
+    /// Set once the call has ended: when the recording will stop and save by itself.
+    @Published var endDeadline: Date?
+    var onKeepRecording: (() -> Void)?
+}
+
+/// The small "recording a meeting" pill. It stands in the middle of the right screen edge, tall and narrow:
+/// the dot and the time at rest, Pause, Stop and Hide when the mouse is over it. Hide folds it into a tab.
+/// When the call ends it turns into a short notice with a Keep recording button.
 @MainActor
 final class MeetingIndicatorController {
     static let shared = MeetingIndicatorController()
 
     private var panel: NSPanel?
-    private let size = NSSize(width: 248, height: 60)
+    private let model = MeetingPillModel()
+    private var modelObserver: AnyCancellable?
+
+    /// Room around the drawn shape for its shadow.
+    private let margin: CGFloat = 12
+    /// How far the pill stands in from the screen edge.
+    private let edgeInset: CGFloat = 6
 
     private init() {}
 
@@ -17,8 +37,12 @@ final class MeetingIndicatorController {
             panel.orderFrontRegardless()
             return
         }
+        model.isHovering = false
+        model.isCollapsed = false
+        model.endDeadline = nil
+
         let panel = NSPanel(
-            contentRect: NSRect(origin: .zero, size: size),
+            contentRect: NSRect(origin: .zero, size: size()),
             styleMask: [.nonactivatingPanel, .borderless],
             backing: .buffered,
             defer: false
@@ -28,112 +52,268 @@ final class MeetingIndicatorController {
         panel.hidesOnDeactivate = false
         panel.canHide = false
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
-        panel.isMovableByWindowBackground = true
+        panel.isMovableByWindowBackground = false
         panel.backgroundColor = .clear
         panel.isOpaque = false
         panel.hasShadow = false
 
-        let hosting = NSHostingView(rootView: MeetingIndicatorView(coordinator: MeetingsCoordinator.shared))
-        hosting.frame = NSRect(origin: .zero, size: size)
+        let hosting = NSHostingView(rootView: MeetingIndicatorView(coordinator: MeetingsCoordinator.shared, model: model))
         panel.contentView = hosting
-
-        if let screen = NSScreen.main ?? NSScreen.screens.first {
-            let frame = screen.visibleFrame
-            panel.setFrameOrigin(NSPoint(x: frame.maxX - size.width - 10, y: frame.maxY - size.height - 4))
-        }
-        panel.orderFrontRegardless()
         self.panel = panel
+
+        // The panel is sized to what is showing, so a change of state is a change of size.
+        modelObserver = model.objectWillChange
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in self?.updateFrame(animated: true) }
+        updateFrame(animated: false)
+        panel.orderFrontRegardless()
     }
 
     func hide() {
+        modelObserver = nil
         panel?.orderOut(nil)
         panel = nil
+        model.endDeadline = nil
+        model.onKeepRecording = nil
+    }
+
+    /// The call has ended: shows the notice and counts down to the automatic stop.
+    func showCallEnded(deadline: Date, onKeep: @escaping () -> Void) {
+        model.onKeepRecording = onKeep
+        model.isCollapsed = false
+        model.endDeadline = deadline
+    }
+
+    func hideCallEnded() {
+        model.endDeadline = nil
+        model.onKeepRecording = nil
+    }
+
+    // MARK: - Size and place
+
+    /// The pill's drawn size in each state; the panel adds `margin` around it.
+    private var contentSize: NSSize {
+        if model.endDeadline != nil { return NSSize(width: 214, height: 96) }
+        if model.isCollapsed { return NSSize(width: 20, height: 56) }
+        return model.isHovering ? NSSize(width: 48, height: 182) : NSSize(width: 48, height: 66)
+    }
+
+    /// The folded tab touches the screen edge, so it needs no shadow room on its right.
+    private var isTab: Bool { model.isCollapsed && model.endDeadline == nil }
+
+    private func size() -> NSSize {
+        NSSize(width: contentSize.width + (isTab ? margin : margin * 2), height: contentSize.height + margin * 2)
+    }
+
+    private func updateFrame(animated: Bool) {
+        guard let panel, let screen = NSScreen.main ?? NSScreen.screens.first else { return }
+        let frame = screen.visibleFrame
+        let size = size()
+        // The tab sits flush with the edge; everything else stands in a little.
+        let rightEdge = isTab ? frame.maxX : frame.maxX - edgeInset + margin
+        let origin = NSPoint(x: rightEdge - size.width, y: frame.midY - size.height / 2)
+        let target = NSRect(origin: origin, size: size)
+        guard panel.frame != target else { return }
+        if animated, panel.isVisible {
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = 0.14
+                panel.animator().setFrame(target, display: true)
+            }
+        } else {
+            panel.setFrame(target, display: true)
+        }
     }
 }
 
 struct MeetingIndicatorView: View {
     @ObservedObject var coordinator: MeetingsCoordinator
-    @State private var pulse = false
+    @ObservedObject var model: MeetingPillModel
 
     var body: some View {
-        HStack(spacing: 10) {
-            Circle()
-                .fill(AppTheme.Palette.recording)
-                .frame(width: 9, height: 9)
-                .opacity(pulse ? 0.35 : 1)
-                .animation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true), value: pulse)
-                .onAppear { pulse = true }
-
-            VStack(alignment: .leading, spacing: 1) {
-                Text("Meeting")
-                    .font(.appSans(11, weight: .semibold))
-                    .foregroundStyle(AppTheme.Palette.inkSoft)
-                TimelineView(.periodic(from: .now, by: 0.25)) { context in
-                    HStack(spacing: 6) {
-                        Text(elapsed(at: context.date))
-                            .font(.appNumber(13, weight: .medium))
-                            .foregroundStyle(AppTheme.Palette.ink)
-                        MeetingLevelBars(level: coordinator.microphoneLevel, help: "Your microphone")
-                        MeetingLevelBars(level: coordinator.callLevel, help: "Call audio")
-                    }
-                }
+        ZStack(alignment: .trailing) {
+            if let deadline = model.endDeadline {
+                endedNotice(deadline: deadline)
+            } else if model.isCollapsed {
+                tab
+            } else {
+                pill
             }
-
-            Spacer(minLength: 0)
-
-            Button {
-                coordinator.stopRecording()
-            } label: {
-                HStack(spacing: 5) {
-                    RoundedRectangle(cornerRadius: 2, style: .continuous)
-                        .fill(AppTheme.Text.onAccent)
-                        .frame(width: 8, height: 8)
-                    Text("Stop")
-                        .font(.appSans(12, weight: .semibold))
-                        .foregroundStyle(AppTheme.Text.onAccent)
-                }
-                .padding(.horizontal, 10)
-                .frame(height: 26)
-                .background(Capsule().fill(AppTheme.Palette.accent))
-            }
-            .buttonStyle(.plain)
-            .help("Stop recording the meeting")
-            .disabled(!coordinator.isRecording)
         }
-        .padding(.leading, 14)
-        .padding(.trailing, 10)
-        .frame(width: 228, height: 40)
-        .background(Capsule().fill(AppTheme.Palette.card))
-        .overlay(Capsule().strokeBorder(AppTheme.Palette.lineStrong, lineWidth: 1))
-        .shadow(color: AppTheme.Palette.ink.opacity(0.18), radius: 8, y: 3)
-        .frame(width: 248, height: 60)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
+        .padding(.trailing, model.isCollapsed && model.endDeadline == nil ? 0 : 12)
+        .background(PillHoverTracker { model.isHovering = $0 })
+        .animation(.easeOut(duration: 0.14), value: model.isHovering)
+        .animation(.easeOut(duration: 0.14), value: model.isCollapsed)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Recording a meeting")
     }
 
+    // MARK: - The pill
+
+    private var pill: some View {
+        VStack(spacing: 8) {
+            VStack(spacing: 6) {
+                RecordingDot(coordinator: coordinator)
+                    .padding(.top, 2)
+                TimelineView(.periodic(from: .now, by: 0.25)) { context in
+                    Text(elapsed(at: context.date))
+                        .font(.appNumber(11.5, weight: .medium))
+                        .foregroundStyle(coordinator.isPaused ? AppTheme.Palette.muted : AppTheme.Palette.ink)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                }
+            }
+            .frame(height: 50)
+
+            if model.isHovering {
+                VStack(spacing: 8) {
+                    PillButton(
+                        symbol: coordinator.isPaused ? "play.fill" : "pause.fill",
+                        help: coordinator.isPaused ? "Resume recording" : "Pause recording"
+                    ) { coordinator.togglePause() }
+                    PillButton(symbol: "stop.fill", help: "Stop recording the meeting", filled: true) {
+                        coordinator.stopRecording()
+                    }
+                    .disabled(!coordinator.isRecording)
+                    PillButton(symbol: "chevron.right", help: "Hide the pill. Recording carries on.") {
+                        model.isCollapsed = true
+                        model.isHovering = false
+                    }
+                }
+                .transition(.opacity)
+            }
+        }
+        .padding(.horizontal, 6)
+        .padding(.vertical, 8)
+        .frame(width: 48)
+        .frame(maxHeight: .infinity, alignment: .top)
+        .background(Capsule().fill(AppTheme.Palette.card))
+        .overlay(Capsule().strokeBorder(AppTheme.Palette.lineStrong, lineWidth: 1))
+        .shadow(color: AppTheme.Palette.ink.opacity(0.18), radius: 8, y: 3)
+        .padding(.vertical, 12)
+    }
+
+    /// The pill folded away: a small tab at the edge. A click brings the pill back.
+    private var tab: some View {
+        Button {
+            model.isCollapsed = false
+        } label: {
+            VStack(spacing: 5) {
+                Circle()
+                    .fill(coordinator.isPaused ? AppTheme.Palette.faint : AppTheme.Palette.recording)
+                    .frame(width: 7, height: 7)
+                Image(systemName: "chevron.left")
+                    .font(.system(size: 8, weight: .bold))
+                    .foregroundStyle(AppTheme.Palette.inkSoft)
+            }
+            .frame(width: 20, height: 56)
+            .background(UnevenRoundedRectangle(topLeadingRadius: 10, bottomLeadingRadius: 10).fill(AppTheme.Palette.card))
+            .overlay(
+                UnevenRoundedRectangle(topLeadingRadius: 10, bottomLeadingRadius: 10)
+                    .strokeBorder(AppTheme.Palette.lineStrong, lineWidth: 1))
+            .shadow(color: AppTheme.Palette.ink.opacity(0.18), radius: 6, y: 2)
+        }
+        .buttonStyle(.plain)
+        .help("Show the meeting pill")
+        .accessibilityLabel("Show the meeting pill")
+    }
+
+    // MARK: - Call ended
+
+    private func endedNotice(deadline: Date) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            TimelineView(.periodic(from: .now, by: 0.25)) { context in
+                let seconds = max(0, Int(deadline.timeIntervalSince(context.date).rounded(.up)))
+                Text("Call ended, saving in \(seconds)s")
+                    .font(.appSans(13, weight: .semibold))
+                    .foregroundStyle(AppTheme.Palette.ink)
+                    .lineLimit(1)
+            }
+            Button("Keep recording") { model.onKeepRecording?() }
+                .buttonStyle(MeetingAccentButtonStyle())
+                .controlSize(.small)
+        }
+        .padding(14)
+        .frame(width: 214, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(AppTheme.Palette.card))
+        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(AppTheme.Palette.lineStrong, lineWidth: 1))
+        .shadow(color: AppTheme.Palette.ink.opacity(0.18), radius: 8, y: 3)
+    }
+
     private func elapsed(at date: Date) -> String {
-        guard let start = coordinator.recordingStartedAt else { return "0:00" }
-        return MeetingTranscriptAssembler.timestamp(max(0, date.timeIntervalSince(start)))
+        MeetingTranscriptAssembler.timestamp(coordinator.elapsed(at: date))
     }
 }
 
-/// Three tiny bars that rise with a track's level, so it's obvious both sides are being heard.
-private struct MeetingLevelBars: View {
-    let level: Float
-    let help: LocalizedStringKey
+/// The recording dot. It dims a little when nobody is making a sound, and goes grey while paused.
+private struct RecordingDot: View {
+    @ObservedObject var coordinator: MeetingsCoordinator
 
     var body: some View {
-        // Speech peaks sit around 0.05–0.5; a square root spreads that range over the bars.
-        let scaled = CGFloat(min(1, sqrt(max(0, level)) * 1.4))
-        HStack(alignment: .bottom, spacing: 1.5) {
-            ForEach(0..<3, id: \.self) { index in
-                let threshold = CGFloat(index) / 3
-                Capsule()
-                    .fill(scaled > threshold + 0.05 ? AppTheme.Palette.accent : AppTheme.Palette.faint.opacity(0.6))
-                    .frame(width: 2.5, height: 4 + CGFloat(index) * 3)
-            }
+        TimelineView(.periodic(from: .now, by: 0.25)) { _ in
+            // Speech peaks sit around 0.05–0.5; anything above a whisper counts as sound.
+            let hearing = max(coordinator.microphoneLevel, coordinator.callLevel) > 0.02
+            Circle()
+                .fill(coordinator.isPaused ? AppTheme.Palette.faint : AppTheme.Palette.recording)
+                .frame(width: 9, height: 9)
+                .opacity(coordinator.isPaused || hearing ? 1 : 0.5)
+                .scaleEffect(hearing && !coordinator.isPaused ? 1.15 : 1)
+                .animation(.easeInOut(duration: 0.25), value: hearing)
         }
-        .frame(height: 10, alignment: .bottom)
+        .frame(width: 12, height: 12)
+        .accessibilityLabel(coordinator.isPaused ? "Paused" : "Recording")
+    }
+}
+
+private struct PillButton: View {
+    let symbol: String
+    let help: LocalizedStringKey
+    var filled = false
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(.system(size: 11, weight: .bold))
+                .foregroundStyle(filled ? AppTheme.Text.onAccent : AppTheme.Palette.inkSoft)
+                .frame(width: 30, height: 30)
+                .background(Circle().fill(filled ? AppTheme.Palette.accent : AppTheme.Palette.ink.opacity(0.07)))
+        }
+        .buttonStyle(.plain)
         .help(help)
+    }
+}
+
+/// Reports whether the mouse is over the pill. The panel never becomes the key window, so SwiftUI's own
+/// hover isn't relied on; this watches the mouse with a tracking area that works whatever is active.
+private struct PillHoverTracker: NSViewRepresentable {
+    let onChange: (Bool) -> Void
+
+    func makeNSView(context: Context) -> TrackerView {
+        let view = TrackerView()
+        view.onChange = onChange
+        return view
+    }
+
+    func updateNSView(_ view: TrackerView, context: Context) {
+        view.onChange = onChange
+    }
+
+    final class TrackerView: NSView {
+        var onChange: ((Bool) -> Void)?
+
+        override func updateTrackingAreas() {
+            super.updateTrackingAreas()
+            trackingAreas.forEach(removeTrackingArea)
+            addTrackingArea(
+                NSTrackingArea(
+                    rect: .zero,
+                    options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect],
+                    owner: self,
+                    userInfo: nil))
+        }
+
+        override func mouseEntered(with event: NSEvent) { onChange?(true) }
+        override func mouseExited(with event: NSEvent) { onChange?(false) }
     }
 }
