@@ -55,6 +55,9 @@ struct MeetingsView: View {
 
                         recordButton
                     }
+                    // Keep both buttons on one line; the subtitle wraps instead.
+                    .lineLimit(1)
+                    .fixedSize()
                 }
 
                 if coordinator.recordingState != .idle {
