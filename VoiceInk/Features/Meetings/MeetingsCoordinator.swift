@@ -41,6 +41,18 @@ final class MeetingsCoordinator: ObservableObject {
         return nil
     }
 
+    /// True while the recording is paused: nothing is written to either track.
+    @Published private(set) var isPaused = false
+    private var pausedAt: Date?
+    private var pausedTotal: TimeInterval = 0
+
+    /// How long the recording has run, not counting time spent paused.
+    func elapsed(at date: Date = Date()) -> TimeInterval {
+        guard let start = recordingStartedAt else { return 0 }
+        let paused = pausedTotal + (pausedAt.map { date.timeIntervalSince($0) } ?? 0)
+        return max(0, date.timeIntervalSince(start) - paused)
+    }
+
     var microphoneLevel: Float { capture.microphoneLevel }
     var callLevel: Float { capture.callLevel }
 
@@ -119,6 +131,9 @@ final class MeetingsCoordinator: ObservableObject {
             let microphone = AudioDeviceManager.shared.getCurrentDevice()
             try capture.start(folder: folder, microphoneDeviceID: microphone == 0 ? nil : microphone)
             recordingCallName = CallDetector.shared.currentCallName
+            isPaused = false
+            pausedAt = nil
+            pausedTotal = 0
             recordingState = .recording(id: id, startedAt: Date())
             MeetingIndicatorController.shared.show()
             logger.notice("Meeting recording started")
@@ -134,9 +149,32 @@ final class MeetingsCoordinator: ObservableObject {
         }
     }
 
+    func pauseRecording() {
+        guard isRecording, !isPaused else { return }
+        capture.pause()
+        pausedAt = Date()
+        isPaused = true
+        logger.notice("Meeting recording paused")
+    }
+
+    func resumeRecording() {
+        guard isRecording, isPaused else { return }
+        capture.resume()
+        if let pausedAt { pausedTotal += Date().timeIntervalSince(pausedAt) }
+        pausedAt = nil
+        isPaused = false
+        logger.notice("Meeting recording resumed")
+    }
+
+    func togglePause() {
+        if isPaused { resumeRecording() } else { pauseRecording() }
+    }
+
     func stopRecording() {
         guard case .recording(let id, let startedAt) = recordingState else { return }
         recordingState = .finishing
+        isPaused = false
+        pausedAt = nil
         Task {
             let result = await capture.stop()
             recordingState = .idle

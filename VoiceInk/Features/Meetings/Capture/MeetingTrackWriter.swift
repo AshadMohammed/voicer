@@ -7,6 +7,9 @@ import os
 final class MeetingTrackSink: @unchecked Sendable {
     private let lock = NSLock()
     private var writer: MeetingTrackWriter?
+    /// While paused nothing reaches the writer. After a resume, audio captured before the resume is also dropped.
+    private var paused = false
+    private var ignoreBefore: UInt64 = 0
 
     func set(_ writer: MeetingTrackWriter?) {
         lock.lock()
@@ -20,8 +23,25 @@ final class MeetingTrackSink: @unchecked Sendable {
         return writer
     }
 
+    func pause() {
+        lock.lock()
+        paused = true
+        lock.unlock()
+    }
+
+    /// Lets audio through again; anything captured before `hostTime` (the moment of the resume) is still dropped.
+    func resume(at hostTime: UInt64) {
+        lock.lock()
+        ignoreBefore = hostTime
+        paused = false
+        lock.unlock()
+    }
+
     func enqueue(_ samples: [Float], sampleRate: Double, hostTime: UInt64) {
-        currentWriter?.enqueue(samples, sampleRate: sampleRate, hostTime: hostTime)
+        lock.lock()
+        let target = (paused || (hostTime != 0 && hostTime < ignoreBefore)) ? nil : writer
+        lock.unlock()
+        target?.enqueue(samples, sampleRate: sampleRate, hostTime: hostTime)
     }
 
     var level: Float {
@@ -45,6 +65,8 @@ final class MeetingTrackWriter: @unchecked Sendable {
     private var converter: AVAudioConverter?
     private var converterInputRate: Double = 0
     private var closed = false
+    /// Host-clock ticks spent paused. They are taken off every later buffer's time so the file has no gap.
+    private var pausedTicks: UInt64 = 0
     private var firstTimedBuffer = true
     private var firstWriteError: String?
     private var failedWriteCount = 0
@@ -98,6 +120,13 @@ final class MeetingTrackWriter: @unchecked Sendable {
         guard !samples.isEmpty else { return }
         queue.async { [weak self] in
             self?.append(samples, sampleRate: sampleRate, hostTime: hostTime)
+        }
+    }
+
+    /// Called once per pause, before audio flows again, so the paused stretch is left out of the file.
+    func skipPausedTime(ticks: UInt64) {
+        queue.async { [weak self] in
+            self?.pausedTicks += ticks
         }
     }
 
@@ -203,8 +232,8 @@ final class MeetingTrackWriter: @unchecked Sendable {
     }
 
     private func targetFrame(hostTime: UInt64) -> AVAudioFramePosition {
-        guard hostTime > sessionHostTime else { return 0 }
-        let ticks = hostTime - sessionHostTime
+        guard hostTime > sessionHostTime + pausedTicks else { return 0 }
+        let ticks = hostTime - sessionHostTime - pausedTicks
         let nanos = Double(ticks) * Double(timebase.numer) / Double(timebase.denom)
         return AVAudioFramePosition(nanos / 1_000_000_000 * format.sampleRate)
     }

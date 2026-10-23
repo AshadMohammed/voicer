@@ -27,6 +27,7 @@ enum MeetingCaptureError: LocalizedError {
 final class MeetingCaptureEngine {
     var onProblem: (@MainActor (String) -> Void)?
     private(set) var isRecording = false
+    private(set) var isPaused = false
     var microphoneLevel: Float { microphoneSink.level }
     var callLevel: Float { callSink.level }
 
@@ -41,6 +42,7 @@ final class MeetingCaptureEngine {
     private var callURL: URL?
     private var startedAt = Date()
     private var sessionHostTime: UInt64 = 0
+    private var pausedAtHostTime: UInt64 = 0
     private var warnings: [String] = []
     private var lastResult: MeetingCaptureResult?
 
@@ -59,6 +61,9 @@ final class MeetingCaptureEngine {
         microphoneURL = nil
         callURL = nil
         startedAt = Date()
+        isPaused = false
+        microphoneSink.resume(at: 0)
+        callSink.resume(at: 0)
         sessionHostTime = mach_absolute_time()
         let reportProblem: @Sendable (String) -> Void = { [weak self] message in
             Task { @MainActor [weak self] in self?.onProblem?(message) }
@@ -130,6 +135,27 @@ final class MeetingCaptureEngine {
         isRecording = true
     }
 
+    /// Stops both tracks together. Time spent paused is left out of both files, so they stay in step.
+    func pause() {
+        guard isRecording, !isPaused else { return }
+        pausedAtHostTime = mach_absolute_time()
+        isPaused = true
+        microphoneSink.pause()
+        callSink.pause()
+    }
+
+    func resume() {
+        guard isRecording, isPaused else { return }
+        let now = mach_absolute_time()
+        let gap = now > pausedAtHostTime ? now - pausedAtHostTime : 0
+        // The writers learn about the gap before any new audio reaches them.
+        microphoneWriter?.skipPausedTime(ticks: gap)
+        callWriter?.skipPausedTime(ticks: gap)
+        microphoneSink.resume(at: now)
+        callSink.resume(at: now)
+        isPaused = false
+    }
+
     func stop() async -> MeetingCaptureResult {
         if let lastResult { return lastResult }
         guard isRecording else {
@@ -162,6 +188,7 @@ final class MeetingCaptureEngine {
         microphone = nil
         systemTap = nil
         isRecording = false
+        isPaused = false
         lastResult = result
         return result
     }
