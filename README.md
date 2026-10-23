@@ -23,7 +23,9 @@ start and stop recording, and a meeting recorder. Speech is turned into text on 
 | Recording key | Toggle or push to talk | **Hold or Double Tap**: hold Right Option to talk, double tap to keep recording hands-free until the next press |
 | Waveform | Animated on a timer | Follows your voice, learns the room's background noise and stays flat in silence |
 | Look | Default VoiceInk theme | Light cream theme with an orange accent, new icon, redesigned dashboard, history grouped by day |
-| Meetings | Not available | Records your mic and the call's audio as two tracks, transcribes them locally, labels who said what and writes a summary |
+| Speech model | About 16 local and cloud models to pick from | One: Parakeet Ultra, downloaded on first launch |
+| Modes | Per-app modes with their own model and prompt | Removed: one dictation setup, model shown in Settings |
+| Meetings | Not available | Records your mic and the call's audio as two tracks, transcribes them locally, labels who said what and writes a summary. The audio is saved beside the note in `~/Documents/Voicer Meetings`, named by date and call app |
 | Call detection | Not available | Notices when a call app starts using the mic and offers to record the meeting |
 | Menu bar | Dock or menu bar | Can also run with no Dock icon and the menu bar icon hidden |
 | Upsell | Pro page, star prompts | Removed |
@@ -50,6 +52,15 @@ when asked. More detail, including signing options, is in [BUILDING.md](BUILDING
 
 Without an Apple Development certificate the app is signed ad hoc, so macOS asks for permissions again after each
 rebuild. There is no notarised download yet.
+
+## Let your AI agent use it
+
+Voicer keeps notes, recordings, history and settings as local files. To let Claude Code (or any agent that reads skills)
+pull your meeting notes or change a setting, copy the skill into its skills folder:
+
+```bash
+cp -R agent-skill/voicer ~/.claude/skills/
+```
 
 ## Staying in step with VoiceInk
 
