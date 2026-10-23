@@ -45,6 +45,8 @@ struct SettingsView: View {
 
     private var settingsForm: some View {
         Form {
+            SpeechModelSettingsSection()
+
             Section {
                 LabeledContent("Primary Shortcut") {
                     HStack(spacing: 8) {

@@ -304,21 +304,6 @@ final class OnboardingFlowController {
         }
     }
 
-    func downloadTranscriptionModel(
-        _ model: FluidAudioModel,
-        modelManager: FluidAudioModelManager
-    ) {
-        guard coordinator.requiredPermissionsGranted,
-            coordinator.hasSelectedOnboardingMicrophone,
-            !modelManager.isFluidAudioModelDownloaded(model),
-            !modelManager.isFluidAudioModelDownloading(model)
-        else {
-            return
-        }
-
-        modelManager.startDownload(model)
-    }
-
     func moveToExperienceStep(
         _ index: Int,
         enhancementService: AIEnhancementService
@@ -358,7 +343,17 @@ final class OnboardingFlowController {
             coordinator.defaults.removeObject(forKey: $0)
         }
         activateCleanTranscriptionMode()
+        removeExtraStarterModes()
         onComplete()
+    }
+
+    /// Voicer keeps one mode, Dictation. The sample modes made for the walkthrough would have no page to manage them.
+    private func removeExtraStarterModes() {
+        let manager = ModeManager.shared
+        guard manager.getDefaultConfiguration() != nil else { return }
+        for config in manager.configurations where !config.isDefault && StarterModeCatalog.ids.contains(config.id) {
+            _ = manager.removeConfiguration(with: config.id)
+        }
     }
 
     func skipOnboarding(onComplete: () -> Void) {

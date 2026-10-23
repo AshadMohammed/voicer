@@ -152,6 +152,14 @@ struct VoiceInkApp: App {
         transcriptionModelManager.refreshAllAvailableModels()
         transcriptionModelManager.loadCurrentTranscriptionModel()
 
+        SpeechModelController.shared.configure(
+            transcriptionModelManager: transcriptionModelManager,
+            fluidAudioModelManager: fluidAudioModelManager
+        )
+        Task { @MainActor in
+            SpeechModelController.shared.prepareOnLaunch()
+        }
+
         _whisperModelManager = State(initialValue: whisperModelManager)
         _fluidAudioModelManager = State(initialValue: fluidAudioModelManager)
         _transcriptionModelManager = StateObject(wrappedValue: transcriptionModelManager)
@@ -454,7 +462,7 @@ struct VoiceInkApp: App {
                 title: String(localized: "No mode configured"),
                 type: .warning,
                 duration: 7.0,
-                actionButton: (String(localized: "Manage Modes"), ModeSetupNavigator.openModesSettings)
+                actionButton: (String(localized: "Open Settings"), ModeSetupNavigator.openModesSettings)
             )
         }
     }

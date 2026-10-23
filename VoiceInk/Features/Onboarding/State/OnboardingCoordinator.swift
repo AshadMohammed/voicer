@@ -259,8 +259,9 @@ final class OnboardingCoordinator: ObservableObject {
         }
     }
 
+    /// Cloud transcription is no longer offered, so setup is always the local model.
     var transcriptionSetupKind: OnboardingTranscriptionSetupKind {
-        OnboardingTranscriptionSetupKind(rawValue: storedTranscriptionSetupKind) ?? .local
+        .local
     }
 
     var onboardingTranscriptionProviderOptions: [any CloudProvider] {
@@ -366,10 +367,10 @@ final class OnboardingCoordinator: ObservableObject {
         return onboardingProviderOptions.first ?? .groq
     }
 
-    var requiredTranscriptionModel: FluidAudioModel? {
+    var requiredTranscriptionModel: TranscribeCppModel? {
         TranscriptionModelRegistry.models
-            .compactMap { $0 as? FluidAudioModel }
-            .first { $0.name == "parakeet-tdt-0.6b-v3" }
+            .compactMap { $0 as? TranscribeCppModel }
+            .first { $0.name == TranscriptionModelRegistry.defaultModelName }
     }
 
     func selectedOnboardingTranscriptionProviderKeyBinding() -> Binding<String> {
@@ -398,9 +399,9 @@ final class OnboardingCoordinator: ObservableObject {
         )
     }
 
-    func isTranscriptionModelDownloaded(using modelManager: FluidAudioModelManager) -> Bool {
+    func isTranscriptionModelDownloaded(using modelManager: TranscribeCppModelManager) -> Bool {
         guard let requiredTranscriptionModel else { return false }
-        return modelManager.isFluidAudioModelDownloaded(requiredTranscriptionModel)
+        return modelManager.isModelDownloaded(requiredTranscriptionModel)
     }
 
     func isTranscriptionSetupReady(isTranscriptionModelDownloaded: Bool) -> Bool {

@@ -3,7 +3,8 @@ import SwiftUI
 
 struct OnboardingView: View {
     @Binding var hasCompletedOnboardingV2: Bool
-    @EnvironmentObject var fluidAudioModelManager: FluidAudioModelManager
+    @ObservedObject private var cppModelManager = TranscribeCppModelManager.shared
+    @ObservedObject private var speechModelController = SpeechModelController.shared
     @EnvironmentObject var transcriptionModelManager: TranscriptionModelManager
     @EnvironmentObject var aiService: AIService
     @EnvironmentObject var enhancementService: AIEnhancementService
@@ -12,7 +13,7 @@ struct OnboardingView: View {
 
     var body: some View {
         let isTranscriptionModelDownloaded = coordinator.isTranscriptionModelDownloaded(
-            using: fluidAudioModelManager
+            using: cppModelManager
         )
         let isTranscriptionSetupReady = coordinator.isTranscriptionSetupReady(
             isTranscriptionModelDownloaded: isTranscriptionModelDownloaded
@@ -52,29 +53,16 @@ struct OnboardingView: View {
                 case .model:
                     OnboardingModelScreen(
                         contentMaxWidth: contentMaxWidth,
-                        localModel: coordinator.requiredTranscriptionModel,
-                        setupKind: coordinator.transcriptionSetupKind,
-                        providerOptions: coordinator.onboardingTranscriptionProviderOptions,
-                        selectedProviderKey: coordinator.selectedOnboardingTranscriptionProviderKeyBinding(),
-                        isLocalDownloaded: isTranscriptionModelDownloaded,
-                        isLocalDownloading: coordinator.requiredTranscriptionModel.map {
-                            fluidAudioModelManager.isFluidAudioModelDownloading($0)
+                        model: coordinator.requiredTranscriptionModel,
+                        isDownloaded: isTranscriptionModelDownloaded,
+                        isDownloading: coordinator.requiredTranscriptionModel.map {
+                            cppModelManager.isModelDownloading($0)
                         } ?? false,
-                        localDownloadStatus: coordinator.requiredTranscriptionModel.flatMap {
-                            fluidAudioModelManager.downloadStatus(for: $0)
+                        downloadStatus: coordinator.requiredTranscriptionModel.flatMap {
+                            cppModelManager.downloadStatus(for: $0)
                         },
-                        isSetupReady: isTranscriptionSetupReady,
-                        onSelectSetupKind: coordinator.flow.selectOnboardingTranscriptionSetup,
-                        onDownload: {
-                            coordinator.flow.downloadTranscriptionModel(
-                                $0,
-                                modelManager: fluidAudioModelManager
-                            )
-                        },
-                        onCancelDownload: {
-                            fluidAudioModelManager.cancelDownload($0)
-                        },
-                        onVerificationChanged: coordinator.flow.refreshTranscriptionSetupVerification,
+                        didFail: speechModelController.autoInstallFailed,
+                        onRetry: speechModelController.retryAutoInstall,
                         onBack: coordinator.flow.goToMicrophoneStep,
                         onContinue: {
                             coordinator.flow.goToAPIStep(
@@ -245,6 +233,8 @@ struct OnboardingView: View {
         }
         .animation(.easeInOut(duration: 0.22), value: coordinator.stage)
         .onAppear {
+            // Installs the speech model if the launch-time install hasn't started (or stopped after an error).
+            speechModelController.prepareOnLaunch()
             coordinator.flow.ensureDefaultOnboardingTranscriptionProvider()
             coordinator.flow.refreshTranscriptionSetupVerification()
             coordinator.flow.ensureDefaultOnboardingProvider()
