@@ -30,6 +30,8 @@ final class MeetingCaptureEngine {
     private(set) var isPaused = false
     var microphoneLevel: Float { microphoneSink.level }
     var callLevel: Float { callSink.level }
+    var microphoneSpeechLevel: Float { microphoneSink.speechLevel }
+    var callSpeechLevel: Float { callSink.speechLevel }
 
     private let logger = Logger(subsystem: "com.ashadmohammed.voicer", category: "MeetingCapture")
     private let microphoneSink = MeetingTrackSink()

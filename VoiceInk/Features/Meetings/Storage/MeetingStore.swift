@@ -10,6 +10,14 @@ import Foundation
 final class MeetingStore: @unchecked Sendable {
     static let shared = MeetingStore()
 
+    struct InterruptedRecording: Sendable {
+        let id: UUID
+        let folder: URL
+        let startedAt: Date
+        let microphoneURL: URL?
+        let callURL: URL?
+    }
+
     static let didChangeNotification = Notification.Name("MeetingStoreDidChange")
 
     // MARK: - Defaults
@@ -105,6 +113,70 @@ final class MeetingStore: @unchecked Sendable {
             records = self.readAllFromDisk()
         }
         return records
+    }
+
+    /// Raw tracks without a saved record are interrupted recordings. Failed folders are retried at most three launches.
+    func interruptedRecordings(excluding activeID: UUID? = nil) -> [InterruptedRecording] {
+        var candidates: [InterruptedRecording] = []
+        queue.sync {
+            let fm = FileManager.default
+            guard let folders = try? fm.contentsOfDirectory(
+                at: dataFolder, includingPropertiesForKeys: [.isDirectoryKey, .creationDateKey, .contentModificationDateKey],
+                options: .skipsHiddenFiles
+            ) else { return }
+
+            for folder in folders {
+                guard let id = UUID(uuidString: folder.lastPathComponent), id != activeID else { continue }
+                guard !fm.fileExists(atPath: folder.appendingPathComponent("meeting.json").path) else { continue }
+                let marker = folder.appendingPathComponent("recovery-attempts")
+                let attemptsText = try? String(contentsOf: marker, encoding: .utf8)
+                let attempts = attemptsText.flatMap { Int($0) } ?? 0
+                guard attempts < 3 else { continue }
+
+                let microphone = folder.appendingPathComponent("microphone.caf")
+                let call = folder.appendingPathComponent("call.caf")
+                let microphoneURL = hasAudioData(microphone) ? microphone : nil
+                let callURL = hasAudioData(call) ? call : nil
+                guard microphoneURL != nil || callURL != nil else { continue }
+
+                let folderValues = try? folder.resourceValues(forKeys: [.creationDateKey, .contentModificationDateKey])
+                let trackDate = [microphoneURL, callURL].compactMap { url -> Date? in
+                    guard let url else { return nil }
+                    return try? url.resourceValues(forKeys: [.creationDateKey]).creationDate
+                }.min()
+                let startedAt = folderValues?.creationDate ?? trackDate
+                    ?? folderValues?.contentModificationDate ?? Date()
+                candidates.append(InterruptedRecording(
+                    id: id, folder: folder, startedAt: startedAt,
+                    microphoneURL: microphoneURL, callURL: callURL))
+            }
+        }
+        return candidates.sorted { $0.startedAt < $1.startedAt }
+    }
+
+    /// Records an attempt before work begins so crashes cannot retry the same broken folder forever.
+    func beginRecoveryAttempt(for recording: InterruptedRecording) -> Int? {
+        var attempt: Int?
+        queue.sync {
+            let marker = recording.folder.appendingPathComponent("recovery-attempts")
+            let previousText = try? String(contentsOf: marker, encoding: .utf8)
+            let previous = previousText.flatMap { Int($0) } ?? 0
+            guard previous < 3 else { return }
+            let next = previous + 1
+            do {
+                try String(next).write(to: marker, atomically: true, encoding: .utf8)
+                attempt = next
+            } catch {
+                attempt = nil
+            }
+        }
+        return attempt
+    }
+
+    func finishRecovery(for recording: InterruptedRecording) {
+        queue.sync {
+            try? FileManager.default.removeItem(at: recording.folder.appendingPathComponent("recovery-attempts"))
+        }
     }
 
     /// URL of the Markdown note for a record. The file may not exist yet.
@@ -219,6 +291,12 @@ final class MeetingStore: @unchecked Sendable {
             records.append(record)
         }
         return records.sorted { $0.startedAt > $1.startedAt }
+    }
+
+    private func hasAudioData(_ url: URL) -> Bool {
+        guard let values = try? url.resourceValues(forKeys: [.fileSizeKey]),
+              let size = values.fileSize else { return false }
+        return size > 16
     }
 
     /// Returns a filesystem-safe, unique note file name for `record`.

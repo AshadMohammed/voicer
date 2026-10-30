@@ -4,6 +4,8 @@ import os
 
 enum BrowserType {
     case safari
+    case zen
+    case firefox
     case arc
     case dia
     case chrome
@@ -18,6 +20,8 @@ enum BrowserType {
     var scriptName: String {
         switch self {
         case .safari: return "safariURL"
+        case .zen: return "zenURL"
+        case .firefox: return "firefoxURL"
         case .arc: return "arcURL"
         case .dia: return "diaURL"
         case .chrome: return "chromeURL"
@@ -34,6 +38,8 @@ enum BrowserType {
     var bundleIdentifier: String {
         switch self {
         case .safari: return "com.apple.Safari"
+        case .zen: return "app.zen-browser.zen"
+        case .firefox: return "org.mozilla.firefox"
         case .arc: return "company.thebrowser.Browser"
         case .dia: return "company.thebrowser.dia"
         case .chrome: return "com.google.Chrome"
@@ -50,6 +56,8 @@ enum BrowserType {
     var displayName: String {
         switch self {
         case .safari: return "Safari"
+        case .zen: return "Zen"
+        case .firefox: return "Firefox"
         case .arc: return "Arc"
         case .dia: return "Dia"
         case .chrome: return "Google Chrome"
@@ -64,7 +72,7 @@ enum BrowserType {
     }
 
     static var allCases: [BrowserType] {
-        [.safari, .arc, .dia, .chrome, .comet, .edge, .brave, .opera, .vivaldi, .orion, .yandex]
+        [.safari, .zen, .firefox, .arc, .dia, .chrome, .comet, .edge, .brave, .opera, .vivaldi, .orion, .yandex]
     }
 
     static var installedBrowsers: [BrowserType] {

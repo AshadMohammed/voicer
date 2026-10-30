@@ -24,6 +24,7 @@ final class MeetingIndicatorController {
     private var panel: NSPanel?
     private let model = MeetingPillModel()
     private var modelObserver: AnyCancellable?
+    private var coordinatorObserver: AnyCancellable?
 
     /// Room around the drawn shape for its shadow.
     private let margin: CGFloat = 12
@@ -65,12 +66,16 @@ final class MeetingIndicatorController {
         modelObserver = model.objectWillChange
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in self?.updateFrame(animated: true) }
+        coordinatorObserver = MeetingsCoordinator.shared.objectWillChange
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in self?.updateFrame(animated: true) }
         updateFrame(animated: false)
         panel.orderFrontRegardless()
     }
 
     func hide() {
         modelObserver = nil
+        coordinatorObserver = nil
         panel?.orderOut(nil)
         panel = nil
         model.endDeadline = nil
@@ -89,10 +94,16 @@ final class MeetingIndicatorController {
         model.onKeepRecording = nil
     }
 
+    func revealForSilenceStatus() {
+        model.isCollapsed = false
+    }
+
     // MARK: - Size and place
 
     /// The pill's drawn size in each state; the panel adds `margin` around it.
     private var contentSize: NSSize {
+        if MeetingsCoordinator.shared.isSilencePromptShown { return NSSize(width: 252, height: 126) }
+        if MeetingsCoordinator.shared.isAutoPausedForSilence { return NSSize(width: 252, height: 116) }
         if model.endDeadline != nil { return NSSize(width: 214, height: 96) }
         if model.isCollapsed { return NSSize(width: 20, height: 56) }
         return model.isHovering ? NSSize(width: 48, height: 182) : NSSize(width: 48, height: 66)
@@ -131,7 +142,11 @@ struct MeetingIndicatorView: View {
 
     var body: some View {
         ZStack(alignment: .trailing) {
-            if let deadline = model.endDeadline {
+            if coordinator.isSilencePromptShown {
+                silencePrompt
+            } else if coordinator.isAutoPausedForSilence {
+                autoPausedNotice
+            } else if let deadline = model.endDeadline {
                 endedNotice(deadline: deadline)
             } else if model.isCollapsed {
                 tab
@@ -219,6 +234,50 @@ struct MeetingIndicatorView: View {
     }
 
     // MARK: - Call ended
+
+    private var silencePrompt: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Nothing heard for 10 min. Stop recording?")
+                .font(.appSans(13, weight: .semibold))
+                .foregroundStyle(AppTheme.Palette.ink)
+                .fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: 8) {
+                Button("Stop") { coordinator.stopRecording() }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                Button("Keep recording") { coordinator.keepRecordingAfterSilence() }
+                    .buttonStyle(MeetingAccentButtonStyle())
+                    .controlSize(.small)
+            }
+        }
+        .padding(14)
+        .frame(width: 252, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(AppTheme.Palette.card))
+        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(AppTheme.Palette.lineStrong, lineWidth: 1))
+        .shadow(color: AppTheme.Palette.ink.opacity(0.18), radius: 8, y: 3)
+    }
+
+    private var autoPausedNotice: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Paused after 15 min with no sound")
+                .font(.appSans(13, weight: .semibold))
+                .foregroundStyle(AppTheme.Palette.ink)
+                .fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: 8) {
+                Button("Stop") { coordinator.stopRecording() }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                Button("Resume") { coordinator.resumeRecording() }
+                    .buttonStyle(MeetingAccentButtonStyle())
+                    .controlSize(.small)
+            }
+        }
+        .padding(14)
+        .frame(width: 252, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(AppTheme.Palette.card))
+        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(AppTheme.Palette.lineStrong, lineWidth: 1))
+        .shadow(color: AppTheme.Palette.ink.opacity(0.18), radius: 8, y: 3)
+    }
 
     private func endedNotice(deadline: Date) -> some View {
         VStack(alignment: .leading, spacing: 10) {

@@ -66,6 +66,8 @@ enum CallAppCatalog {
               prefixes: ["cisco-systems.spark", "com.cisco.webexmeetingsapp", "com.webex.meetingmanager"]),
         Entry(source: CallSource(id: "com.hnc.Discord", name: "Discord", kind: .app),
               prefixes: ["com.hnc.discord"]),
+        Entry(source: CallSource(id: "net.whatsapp.WhatsApp", name: "WhatsApp", kind: .app),
+              prefixes: ["net.whatsapp.whatsapp"]),
         // Browsers
         Entry(source: CallSource(id: "company.thebrowser.Browser", name: "Arc", kind: .browser),
               prefixes: ["company.thebrowser.browser"]),
@@ -75,6 +77,10 @@ enum CallAppCatalog {
               prefixes: ["com.google.chrome"]),
         Entry(source: CallSource(id: "com.apple.Safari", name: "Safari", kind: .browser),
               prefixes: ["com.apple.safari", "com.apple.webkit.gpu"]),
+        Entry(source: CallSource(id: "app.zen-browser.zen", name: "Zen", kind: .browser),
+              prefixes: ["app.zen-browser.zen"]),
+        Entry(source: CallSource(id: "org.mozilla.firefox", name: "Firefox", kind: .browser),
+              prefixes: ["org.mozilla.firefox"]),
     ]
 
     /// A prefix matches only on a whole dot-separated component boundary.

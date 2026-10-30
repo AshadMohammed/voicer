@@ -326,6 +326,7 @@ private struct MeetingsSettingsCard: View {
     let notesFolder: URL
     @AppStorage(CallDetector.settingKey) private var askToRecordCalls = true
     @AppStorage(MeetingStore.saveAudioToDocumentsKey) private var saveAudioToDocuments = true
+    @AppStorage(MeetingsCoordinator.silenceAutoPauseSettingKey) private var pauseWhenSilent = true
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -337,6 +338,16 @@ private struct MeetingsSettingsCard: View {
                     detail: "When Zoom, Teams, FaceTime, Slack, Webex, Discord or a meeting tab in your browser starts using the microphone, Voicer offers to record. It never records without a click."
                 ) {
                     Toggle("", isOn: $askToRecordCalls)
+                        .labelsHidden()
+                        .toggleStyle(.switch)
+                        .controlSize(.small)
+                }
+                Rectangle().fill(AppTheme.Palette.line).frame(height: 1)
+                row(
+                    title: "Pause when nothing is heard for 15 minutes",
+                    detail: "After 10 minutes without speech-level sound, the pill asks whether to stop. If silence continues, recording pauses at 15 minutes."
+                ) {
+                    Toggle("", isOn: $pauseWhenSilent)
                         .labelsHidden()
                         .toggleStyle(.switch)
                         .controlSize(.small)

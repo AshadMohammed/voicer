@@ -10,8 +10,18 @@ enum MeetingAudioArchiver {
     /// Converts `url` (any CAF/PCM file) to a small AAC `.m4a` in the same folder.
     /// Deletes the original only when export succeeds.
     /// - Returns: The `.m4a` URL on success, or the original URL on any failure.
-    static func compress(_ url: URL) async -> URL {
-        let asset = AVURLAsset(url: url)
+    static func compress(_ url: URL, deleteOriginal: Bool = true) async -> URL {
+        let readableURL: URL
+        do {
+            readableURL = try CAFRecoveryReader.repairedCopyIfNeeded(of: url) ?? url
+        } catch {
+            logger.error("Could not repair \(url.lastPathComponent, privacy: .public): \(error.localizedDescription, privacy: .public)")
+            return url
+        }
+        defer {
+            if readableURL != url { try? FileManager.default.removeItem(at: readableURL) }
+        }
+        let asset = AVURLAsset(url: readableURL)
         let outputURL = url.deletingPathExtension().appendingPathExtension("m4a")
 
         // If an m4a already exists (a previous run partially succeeded), remove it first.
@@ -38,11 +48,13 @@ enum MeetingAudioArchiver {
         }
 
         // Remove the original only after a confirmed successful export.
-        do {
-            try FileManager.default.removeItem(at: url)
-        } catch {
+        if deleteOriginal {
+            do {
+                try FileManager.default.removeItem(at: url)
+            } catch {
             // Non-fatal: we have the compressed file; log and move on.
-            logger.warning("Could not delete original after export: \(error.localizedDescription, privacy: .public)")
+                logger.warning("Could not delete original after export: \(error.localizedDescription, privacy: .public)")
+            }
         }
 
         return outputURL
@@ -55,8 +67,22 @@ enum MeetingAudioArchiver {
         let composition = AVMutableComposition()
         var insertedTracks = 0
 
+        var repairedCopies: [URL] = []
+        defer { repairedCopies.forEach { try? FileManager.default.removeItem(at: $0) } }
         for url in [microphone, call].compactMap({ $0 }) {
-            let asset = AVURLAsset(url: url)
+            let readableURL: URL
+            do {
+                if let repaired = try CAFRecoveryReader.repairedCopyIfNeeded(of: url) {
+                    repairedCopies.append(repaired)
+                    readableURL = repaired
+                } else {
+                    readableURL = url
+                }
+            } catch {
+                logger.error("Could not repair \(url.lastPathComponent, privacy: .public): \(error.localizedDescription, privacy: .public)")
+                continue
+            }
+            let asset = AVURLAsset(url: readableURL)
             guard
                 let source = try? await asset.loadTracks(withMediaType: .audio).first,
                 let duration = try? await asset.load(.duration),

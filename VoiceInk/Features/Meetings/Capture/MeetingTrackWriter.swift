@@ -47,6 +47,10 @@ final class MeetingTrackSink: @unchecked Sendable {
     var level: Float {
         currentWriter?.level ?? 0
     }
+
+    var speechLevel: Float {
+        currentWriter?.speechLevel ?? 0
+    }
 }
 
 final class MeetingTrackWriter: @unchecked Sendable {
@@ -60,6 +64,8 @@ final class MeetingTrackWriter: @unchecked Sendable {
     private let format: AVAudioFormat
     private let levelLock = NSLock()
     private var recentLevel: Float = 0
+    private var recentSpeechLevel: Float = 0
+    private var recentLevelHostTime: UInt64 = 0
     private var writtenFrames: AVAudioFramePosition = 0
     private var receivedFrames: AVAudioFramePosition = 0
     private var converter: AVAudioConverter?
@@ -74,7 +80,21 @@ final class MeetingTrackWriter: @unchecked Sendable {
     var level: Float {
         levelLock.lock()
         defer { levelLock.unlock() }
+        guard hasFreshLevel else { return 0 }
         return recentLevel
+    }
+
+    /// RMS is less likely than a single peak to treat a click or a hiss as speech.
+    var speechLevel: Float {
+        levelLock.lock()
+        defer { levelLock.unlock() }
+        guard hasFreshLevel else { return 0 }
+        return recentSpeechLevel
+    }
+
+    private var hasFreshLevel: Bool {
+        let now = DispatchTime.now().uptimeNanoseconds
+        return recentLevelHostTime > 0 && now >= recentLevelHostTime && now - recentLevelHostTime < 1_000_000_000
     }
 
     var frameCount: AVAudioFramePosition {
@@ -205,9 +225,16 @@ final class MeetingTrackWriter: @unchecked Sendable {
             receivedFrames += AVAudioFramePosition(samples.count)
             if let data = output.floatChannelData?.pointee, output.frameLength > 0 {
                 var peak: Float = 0
-                for index in 0..<Int(output.frameLength) { peak = max(peak, abs(data[index])) }
+                var sumSquares = 0.0
+                for index in 0..<Int(output.frameLength) {
+                    let sample = data[index]
+                    peak = max(peak, abs(sample))
+                    sumSquares += Double(sample) * Double(sample)
+                }
                 levelLock.lock()
                 recentLevel = min(1, peak)
+                recentSpeechLevel = Float(sqrt(sumSquares / Double(output.frameLength)))
+                recentLevelHostTime = DispatchTime.now().uptimeNanoseconds
                 levelLock.unlock()
             }
         } catch {

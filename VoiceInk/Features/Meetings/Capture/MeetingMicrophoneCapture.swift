@@ -6,11 +6,12 @@ import os
 final class MeetingMicrophoneCapture: @unchecked Sendable {
     typealias Handler = ([Float], Double, UInt64) -> Void
 
-    private let engine = AVAudioEngine()
+    private var engine = AVAudioEngine()
     private let queue = DispatchQueue(label: "com.ashadmohammed.voicer.meeting.microphone")
     private let logger = Logger(subsystem: "com.ashadmohammed.voicer", category: "MeetingCapture")
     private let handler: Handler
     private let onProblem: @Sendable (String) -> Void
+    private var selectedDeviceID: AudioDeviceID?
     private var restartProblem: String?
     private var configurationObserver: NSObjectProtocol?
     private var active = false
@@ -24,14 +25,8 @@ final class MeetingMicrophoneCapture: @unchecked Sendable {
 
     func prepare(deviceID: AudioDeviceID?) throws -> Double {
         try queue.sync {
-            if let deviceID {
-                guard let audioUnit = engine.inputNode.audioUnit else { throw CaptureError.inputUnavailable }
-                var selectedDevice = deviceID
-                let status = AudioUnitSetProperty(audioUnit, kAudioOutputUnitProperty_CurrentDevice,
-                                                  kAudioUnitScope_Global, 0, &selectedDevice,
-                                                  UInt32(MemoryLayout<AudioDeviceID>.size))
-                guard status == noErr else { throw CaptureError.coreAudio(status) }
-            }
+            selectedDeviceID = deviceID
+            try selectInputDevice(on: engine)
             let rate = engine.inputNode.outputFormat(forBus: 0).sampleRate
             guard rate > 0 else { throw CaptureError.inputUnavailable }
             return rate
@@ -42,24 +37,7 @@ final class MeetingMicrophoneCapture: @unchecked Sendable {
         try queue.sync {
             try installTapAndStart()
             active = true
-            configurationObserver = NotificationCenter.default.addObserver(
-                forName: .AVAudioEngineConfigurationChange, object: engine, queue: nil
-            ) { [weak self] _ in
-                guard let self else { return }
-                self.queue.async { [weak self] in
-                    guard let self, self.active else { return }
-                    do {
-                        self.engine.stop()
-                        self.engine.inputNode.removeTap(onBus: 0)
-                        try self.installTapAndStart()
-                    } catch {
-                        let message = "Microphone capture stopped after an audio configuration change (\(error.localizedDescription))."
-                        self.restartProblem = self.restartProblem ?? message
-                        self.logger.error("Microphone restart failed: \(error.localizedDescription, privacy: .public)")
-                        self.onProblem(message)
-                    }
-                }
-            }
+            observeConfigurationChanges()
         }
     }
 
@@ -71,8 +49,7 @@ final class MeetingMicrophoneCapture: @unchecked Sendable {
                 NotificationCenter.default.removeObserver(configurationObserver)
                 self.configurationObserver = nil
             }
-            engine.stop()
-            engine.inputNode.removeTap(onBus: 0)
+            stop(engine)
         }
     }
 
@@ -81,7 +58,8 @@ final class MeetingMicrophoneCapture: @unchecked Sendable {
         let format = inputNode.outputFormat(forBus: 0)
         guard format.sampleRate > 0, format.channelCount > 0 else { throw CaptureError.inputUnavailable }
         inputNode.removeTap(onBus: 0)
-        inputNode.installTap(onBus: 0, bufferSize: 4096, format: format) { [handler] buffer, time in
+        var exceptionError: NSError?
+        let installed = VIInstallMeetingAudioTap(inputNode, format, { [handler] buffer, time in
             let frames = Int(buffer.frameLength)
             guard frames > 0 else { return }
             var mono = [Float](repeating: 0, count: frames)
@@ -101,8 +79,66 @@ final class MeetingMicrophoneCapture: @unchecked Sendable {
                 return
             }
             handler(mono, buffer.format.sampleRate, time.isHostTimeValid ? time.hostTime : 0)
+        }, &exceptionError)
+        guard installed else { throw exceptionError ?? CaptureError.inputUnavailable }
+        do {
+            try engine.start()
+        } catch {
+            inputNode.removeTap(onBus: 0)
+            throw error
         }
-        try engine.start()
+    }
+
+    private func observeConfigurationChanges() {
+        if let configurationObserver {
+            NotificationCenter.default.removeObserver(configurationObserver)
+        }
+        configurationObserver = NotificationCenter.default.addObserver(
+            forName: .AVAudioEngineConfigurationChange, object: engine, queue: nil
+        ) { [weak self] _ in
+            guard let self else { return }
+            self.queue.async { [weak self] in self?.restartAfterConfigurationChange() }
+        }
+    }
+
+    private func restartAfterConfigurationChange() {
+        guard active else { return }
+        if let configurationObserver {
+            NotificationCenter.default.removeObserver(configurationObserver)
+            self.configurationObserver = nil
+        }
+        let oldEngine = engine
+        stop(oldEngine)
+        engine = AVAudioEngine()
+        do {
+            try selectInputDevice(on: engine)
+            try installTapAndStart()
+            restartProblem = nil
+            logger.notice("Microphone capture restarted after an audio configuration change")
+        } catch {
+            stop(engine)
+            let message = "Microphone capture stopped after an audio configuration change (\(error.localizedDescription))."
+            restartProblem = restartProblem ?? message
+            logger.error("Microphone restart failed: \(error.localizedDescription, privacy: .public)")
+            onProblem(message)
+        }
+        // Keep watching the fresh engine so a later hardware change can recover a failed restart.
+        observeConfigurationChanges()
+    }
+
+    private func selectInputDevice(on engine: AVAudioEngine) throws {
+        guard let selectedDeviceID else { return }
+        guard let audioUnit = engine.inputNode.audioUnit else { throw CaptureError.inputUnavailable }
+        var device = selectedDeviceID
+        let status = AudioUnitSetProperty(audioUnit, kAudioOutputUnitProperty_CurrentDevice,
+                                          kAudioUnitScope_Global, 0, &device,
+                                          UInt32(MemoryLayout<AudioDeviceID>.size))
+        guard status == noErr else { throw CaptureError.coreAudio(status) }
+    }
+
+    private func stop(_ engine: AVAudioEngine) {
+        engine.stop()
+        engine.inputNode.removeTap(onBus: 0)
     }
 
     private enum CaptureError: LocalizedError {

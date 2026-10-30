@@ -270,16 +270,24 @@ final class CallDetector {
         Task { [weak self] in
             guard let self else { return }
             var site: String?
+            var fallbackName: String?
             do {
                 let url = try await BrowserURLService.shared.getCurrentURL(from: browserType)
                 site = CallAppCatalog.meetingSite(forURL: url)
             } catch {
-                // A thrown error = nil site.
-                site = nil
+                switch browserType {
+                case .zen, .firefox:
+                    // Firefox-family tab URLs are not reliably available through AppleScript.
+                    fallbackName = browserType.displayName
+                default:
+                    site = nil
+                }
             }
             if let site { self.browserSiteNames[source.id] = site }
+            if let fallbackName { self.browserSiteNames[source.id] = fallbackName }
             self.updateCurrentCallName()
-            let actions = self.policy.browserTabChecked(source, meetingSite: site, now: Date())
+            let actions = self.policy.browserTabChecked(
+                source, meetingSite: site, fallbackName: fallbackName, now: Date())
             self.perform(actions)
         }
     }
