@@ -65,6 +65,7 @@ struct AppNotificationView: View {
                             .foregroundColor(.white)
                             .padding(.horizontal, 8)
                             .padding(.vertical, 4)
+                            .frame(minHeight: 28)
                             .background(Color.white.opacity(0.14))
                             .clipShape(RoundedRectangle(cornerRadius: 6))
                     }
@@ -75,9 +76,10 @@ struct AppNotificationView: View {
                     Image(systemName: "xmark")
                         .font(.system(size: 10, weight: .medium))
                         .foregroundColor(.white.opacity(0.6))
+                        .frame(width: 28, height: 28)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(PlainButtonStyle())
-                .frame(width: 16, height: 16)
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 12)

@@ -58,6 +58,8 @@ struct VocabularyView: View {
                     showInfoPopover.toggle()
                 } label: {
                     Image(systemName: "info.circle")
+                        .frame(minWidth: 28, minHeight: 28)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.borderless)
                 .help("Vocabulary examples")
@@ -80,6 +82,7 @@ struct VocabularyView: View {
                                 .foregroundColor(.secondary)
                         }
                     }
+                    .frame(minHeight: 28, alignment: .leading)
                     .buttonStyle(.plain)
                     .help("Change sort order")
 

@@ -4,6 +4,7 @@ import os
 
 @MainActor
 class RecordingShortcutManager: ObservableObject {
+    @Published private(set) var shortcutMenuRevision = 0
     @Published var primaryRecordingShortcut: ShortcutSelection {
         didSet {
             UserDefaults.standard.set(primaryRecordingShortcut.rawValue, forKey: "primaryRecordingShortcut")
@@ -81,7 +82,6 @@ class RecordingShortcutManager: ObservableObject {
 
     init(engine: VoiceInkEngine, recorderUIManager: RecorderUIManager) {
         ShortcutMigration.migrateLegacyShortcutsIfNeeded()
-
         self.primaryRecordingShortcut = ShortcutMigration.migrateShortcutSelection(
             action: .primaryRecording,
             allowsNone: false
@@ -150,6 +150,7 @@ class RecordingShortcutManager: ObservableObject {
     }
 
     private func refreshShortcutMonitoring() {
+        shortcutMenuRevision &+= 1
         removeAllMonitoring()
 
         refreshShortcutMonitor()

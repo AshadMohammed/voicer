@@ -24,9 +24,10 @@ struct ModeSettingsQuickSwitchTip: View {
                 Image(systemName: "xmark")
                     .font(.system(size: 10, weight: .semibold))
                     .foregroundColor(AppTheme.Text.secondary)
-                    .frame(width: 22, height: 22)
+                    .frame(width: 28, height: 28)
                     .background(AppTheme.Surface.control)
                     .clipShape(Circle())
+                    .contentShape(Circle())
             }
             .buttonStyle(.plain)
             .help("Dismiss")

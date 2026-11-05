@@ -105,12 +105,19 @@ final class MeetingIndicatorController {
         if MeetingsCoordinator.shared.isSilencePromptShown { return NSSize(width: 252, height: 126) }
         if MeetingsCoordinator.shared.isAutoPausedForSilence { return NSSize(width: 252, height: 116) }
         if model.endDeadline != nil { return NSSize(width: 214, height: 96) }
+        if MeetingsCoordinator.shared.captureProblem != nil || MeetingsCoordinator.shared.captureDeviceNotice != nil {
+            return NSSize(width: 230, height: model.isHovering ? 224 : 112)
+        }
         if model.isCollapsed { return NSSize(width: 20, height: 56) }
         return model.isHovering ? NSSize(width: 48, height: 182) : NSSize(width: 48, height: 66)
     }
 
     /// The folded tab touches the screen edge, so it needs no shadow room on its right.
-    private var isTab: Bool { model.isCollapsed && model.endDeadline == nil }
+    private var isTab: Bool {
+        model.isCollapsed && model.endDeadline == nil
+            && MeetingsCoordinator.shared.captureProblem == nil
+            && MeetingsCoordinator.shared.captureDeviceNotice == nil
+    }
 
     private func size() -> NSSize {
         NSSize(width: contentSize.width + (isTab ? margin : margin * 2), height: contentSize.height + margin * 2)
@@ -148,14 +155,14 @@ struct MeetingIndicatorView: View {
                 autoPausedNotice
             } else if let deadline = model.endDeadline {
                 endedNotice(deadline: deadline)
-            } else if model.isCollapsed {
+            } else if model.isCollapsed && statusMessage == nil {
                 tab
             } else {
                 pill
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
-        .padding(.trailing, model.isCollapsed && model.endDeadline == nil ? 0 : 12)
+        .padding(.trailing, model.isCollapsed && model.endDeadline == nil && statusMessage == nil ? 0 : 12)
         .background(PillHoverTracker { model.isHovering = $0 })
         .animation(.easeOut(duration: 0.14), value: model.isHovering)
         .animation(.easeOut(duration: 0.14), value: model.isCollapsed)
@@ -164,6 +171,10 @@ struct MeetingIndicatorView: View {
     }
 
     // MARK: - The pill
+
+    private var statusMessage: String? {
+        coordinator.captureProblem ?? coordinator.captureDeviceNotice
+    }
 
     private var pill: some View {
         VStack(spacing: 8) {
@@ -179,6 +190,17 @@ struct MeetingIndicatorView: View {
                 }
             }
             .frame(height: 50)
+
+            if let statusMessage {
+                Text(statusMessage)
+                    .font(.appSans(11, weight: .medium))
+                    .foregroundStyle(coordinator.captureProblem == nil ? AppTheme.Palette.inkSoft : AppTheme.Palette.recording)
+                    .multilineTextAlignment(.leading)
+                    .lineLimit(3)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 10)
+            }
 
             if model.isHovering {
                 VStack(spacing: 8) {
@@ -200,7 +222,7 @@ struct MeetingIndicatorView: View {
         }
         .padding(.horizontal, 6)
         .padding(.vertical, 8)
-        .frame(width: 48)
+        .frame(width: statusMessage == nil ? 48 : 230)
         .frame(maxHeight: .infinity, alignment: .top)
         .background(Capsule().fill(AppTheme.Palette.card))
         .overlay(Capsule().strokeBorder(AppTheme.Palette.lineStrong, lineWidth: 1))
@@ -229,6 +251,7 @@ struct MeetingIndicatorView: View {
             .shadow(color: AppTheme.Palette.ink.opacity(0.18), radius: 6, y: 2)
         }
         .buttonStyle(.plain)
+        .frame(minWidth: 28, minHeight: 56)
         .help("Show the meeting pill")
         .accessibilityLabel("Show the meeting pill")
     }

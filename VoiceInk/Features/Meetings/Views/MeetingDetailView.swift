@@ -18,9 +18,28 @@ struct MeetingDetailView: View {
                     Label("Meetings", systemImage: "chevron.left")
                         .font(.appSans(13, weight: .medium))
                         .foregroundStyle(AppTheme.Palette.muted)
+                        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .keyboardShortcut(.cancelAction)
+                .accessibilityLabel("Back to meetings")
+
+                if coordinator.isRecording, let problem = coordinator.captureProblem {
+                    Label(problem, systemImage: "exclamationmark.triangle.fill")
+                        .font(.appSans(12, weight: .medium))
+                        .foregroundStyle(AppTheme.Palette.recording)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(12)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .appSurfaceCard(fill: AppTheme.Accent.fillSubtle)
+                } else if coordinator.isRecording, let notice = coordinator.captureDeviceNotice {
+                    Label(notice, systemImage: "mic.fill")
+                        .font(.appSans(12, weight: .medium))
+                        .foregroundStyle(AppTheme.Palette.inkSoft)
+                        .padding(12)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .appSurfaceCard(fill: AppTheme.Accent.fillSubtle)
+                }
 
                 header
 

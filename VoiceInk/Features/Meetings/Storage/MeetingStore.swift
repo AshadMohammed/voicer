@@ -294,9 +294,7 @@ final class MeetingStore: @unchecked Sendable {
     }
 
     private func hasAudioData(_ url: URL) -> Bool {
-        guard let values = try? url.resourceValues(forKeys: [.fileSizeKey]),
-              let size = values.fileSize else { return false }
-        return size > 16
+        CAFRecoveryReader.containsAudioData(of: url)
     }
 
     /// Returns a filesystem-safe, unique note file name for `record`.

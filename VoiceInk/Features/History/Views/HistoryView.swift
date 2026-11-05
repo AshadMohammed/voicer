@@ -9,6 +9,7 @@ struct HistoryView: View {
 
     @Environment(\.modelContext) private var modelContext
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @EnvironmentObject private var navigation: MainWindowNavigation
     @State private var searchText = ""
     @State private var detailTranscription: Transcription?
     @FocusState private var isSearchFocused: Bool
@@ -86,6 +87,7 @@ struct HistoryView: View {
         isShowingInfo = false
         isSearchFocused = false
         detailTranscription = transcription
+        navigation.showHistoryTranscription(id: transcription.id)
     }
 
     private func closeDetail() {
@@ -93,6 +95,18 @@ struct HistoryView: View {
         isShowingInfo = false
         detailTranscription = nil
         isSearchFocused = true
+        navigation.closeHistoryTranscription()
+    }
+
+    private func restoreHistoryDetail(id: UUID) {
+        guard detailTranscription?.id != id else { return }
+        let targetID = id
+        let descriptor = FetchDescriptor<Transcription>(predicate: #Predicate { $0.id == targetID })
+        guard let transcription = try? modelContext.fetch(descriptor).first else {
+            navigation.discardHistoryTranscription(id: id)
+            return
+        }
+        detailTranscription = transcription
     }
 
     var body: some View {
@@ -154,10 +168,18 @@ struct HistoryView: View {
         .onAppear {
             isViewCurrentlyVisible = true
             isSearchFocused = true
+            if let id = navigation.activeHistoryTranscriptionID { restoreHistoryDetail(id: id) }
             Task { await loadInitialContent() }
         }
         .onDisappear {
             isViewCurrentlyVisible = false
+        }
+        .onChange(of: navigation.activeHistoryTranscriptionID) { _, id in
+            if let id {
+                restoreHistoryDetail(id: id)
+            } else {
+                detailTranscription = nil
+            }
         }
         .onChange(of: searchText) { _, _ in
             Task {

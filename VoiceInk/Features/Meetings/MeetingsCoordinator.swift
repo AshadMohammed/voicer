@@ -54,6 +54,8 @@ final class MeetingsCoordinator: ObservableObject {
     @Published private(set) var isPaused = false
     @Published private(set) var isSilencePromptShown = false
     @Published private(set) var isAutoPausedForSilence = false
+    @Published private(set) var captureProblem: String?
+    @Published private(set) var captureDeviceNotice: String?
     private var pausedAt: Date?
     private var pausedTotal: TimeInterval = 0
     private var lastSpeechAt: Date?
@@ -91,7 +93,13 @@ final class MeetingsCoordinator: ObservableObject {
 
     private init() {
         capture.onProblem = { message in
-            NotificationManager.shared.showNotification(title: message, type: .warning, duration: 6)
+            self.captureProblem = message
+            if let message {
+                NotificationManager.shared.showNotification(title: message, type: .warning, duration: 6)
+            }
+        }
+        capture.onDeviceNotice = { message in
+            self.captureDeviceNotice = message
         }
         storeObserver = NotificationCenter.default.addObserver(
             forName: MeetingStore.didChangeNotification, object: nil, queue: .main
@@ -186,8 +194,17 @@ final class MeetingsCoordinator: ObservableObject {
         do {
             let folder = try store.meetingFolder(for: id)
             // The same microphone dictation uses, so a meeting hears what the user set up.
-            let microphone = AudioDeviceManager.shared.getCurrentDevice()
-            try capture.start(folder: folder, microphoneDeviceID: microphone == 0 ? nil : microphone)
+            let audioDeviceManager = AudioDeviceManager.shared
+            let microphone = audioDeviceManager.getCurrentDevice()
+            let microphoneUID = audioDeviceManager.inputMode == .custom
+                ? UserDefaults.standard.selectedAudioDeviceUID
+                : nil
+            try capture.start(
+                folder: folder,
+                microphoneDeviceID: microphone == 0 ? nil : microphone,
+                microphoneDeviceUID: microphoneUID,
+                followsSystemDefaultInput: audioDeviceManager.inputMode == .systemDefault
+            )
             recordingCallName = CallDetector.shared.currentCallName
             isPaused = false
             isSilencePromptShown = false
@@ -443,7 +460,8 @@ final class MeetingsCoordinator: ObservableObject {
 
         // One mixed file (you and the call together) for the Documents folder, made before the tracks are compressed.
         var mixedAudioURL: URL?
-        if case .tracks(let microphone, let call) = audio, MeetingStore.saveAudioToDocuments {
+        if case .tracks(let microphone, let call) = audio,
+           (microphone != nil || call != nil), MeetingStore.saveAudioToDocuments {
             update(jobID, stage: String(localized: "Saving audio"))
             if let folder = try? store.meetingFolder(for: record.id) {
                 let tempURL = folder.appendingPathComponent("mixed.m4a")

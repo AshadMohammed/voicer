@@ -133,7 +133,6 @@ struct MenuBarView: View {
             Button("Settings") {
                 showMainWindowAndNavigate(to: "Settings")
             }
-            .keyboardShortcut(",", modifiers: .command)
 
             Button("Quit Voicer") {
                 NSApplication.shared.terminate(nil)

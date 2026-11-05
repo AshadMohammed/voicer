@@ -22,9 +22,10 @@ struct ModeSettingsPanelView: View {
                     Image(systemName: "xmark")
                         .font(.system(size: 14, weight: .medium))
                         .foregroundColor(.secondary)
-                        .padding(6)
+                        .frame(width: 28, height: 28)
                         .background(AppTheme.Surface.card)
                         .clipShape(Circle())
+                        .contentShape(Circle())
                 }
                 .buttonStyle(.plain)
                 .keyboardShortcut(.escape, modifiers: [])

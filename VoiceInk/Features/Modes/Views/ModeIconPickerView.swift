@@ -230,7 +230,9 @@ private struct ModeIconButton: View {
                         .symbolRenderingMode(.palette)
                         .foregroundStyle(Color.white, AppTheme.Status.error)
                         .font(.caption2)
+                        .frame(width: 28, height: 28)
                         .background(Circle().fill(Color.white.opacity(0.8)))
+                        .contentShape(Circle())
                 }
                 .buttonStyle(.borderless)
                 .offset(x: 6, y: -6)

@@ -10,6 +10,14 @@ final class MeetingTrackSink: @unchecked Sendable {
     /// While paused nothing reaches the writer. After a resume, audio captured before the resume is also dropped.
     private var paused = false
     private var ignoreBefore: UInt64 = 0
+    private var receivedFrames = 0
+    private var lastFrameAt: Date?
+    private var silenceSince: Date?
+    /// Counts deliveries, so a warning is only cleared by audio that arrives after it was raised.
+    private var frameSerial = 0
+    private var problemFrameSerial: Int?
+    private var nonZeroFrameSerial = 0
+    private var problemNonZeroFrameSerial: Int?
 
     func set(_ writer: MeetingTrackWriter?) {
         lock.lock()
@@ -34,14 +42,82 @@ final class MeetingTrackSink: @unchecked Sendable {
         lock.lock()
         ignoreBefore = hostTime
         paused = false
+        // Time spent paused must not count towards the "no frames" watchdog.
+        if lastFrameAt != nil { lastFrameAt = Date() }
+        silenceSince = nil
+        lock.unlock()
+    }
+
+    func resetWatchdogTimers() {
+        lock.lock()
+        lastFrameAt = Date()
+        silenceSince = nil
         lock.unlock()
     }
 
     func enqueue(_ samples: [Float], sampleRate: Double, hostTime: UInt64) {
         lock.lock()
         let target = (paused || (hostTime != 0 && hostTime < ignoreBefore)) ? nil : writer
+        if target != nil {
+            receivedFrames += samples.count
+            frameSerial += 1
+            lastFrameAt = Date()
+            if samples.contains(where: { $0 != 0 }) {
+                nonZeroFrameSerial += 1
+                silenceSince = nil
+            } else if silenceSince == nil {
+                silenceSince = Date()
+            }
+        }
         lock.unlock()
         target?.enqueue(samples, sampleRate: sampleRate, hostTime: hostTime)
+    }
+
+    var hasReceivedFrames: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return receivedFrames > 0
+    }
+
+    var secondsSinceLastFrame: TimeInterval? {
+        lock.lock()
+        defer { lock.unlock() }
+        return lastFrameAt.map { Date().timeIntervalSince($0) }
+    }
+
+    /// Marks the moment a warning was raised. Audio from before that point must not clear it.
+    func markProblem() {
+        lock.lock()
+        problemFrameSerial = frameSerial
+        problemNonZeroFrameSerial = nonZeroFrameSerial
+        lock.unlock()
+    }
+
+    func clearProblemMark() {
+        lock.lock()
+        problemFrameSerial = nil
+        problemNonZeroFrameSerial = nil
+        lock.unlock()
+    }
+
+    var hasFramesSinceProblem: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        guard let problemFrameSerial else { return true }
+        return frameSerial > problemFrameSerial
+    }
+
+    var hasNonZeroSamplesSinceProblem: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        guard let problemNonZeroFrameSerial else { return true }
+        return nonZeroFrameSerial > problemNonZeroFrameSerial
+    }
+
+    var secondsSinceSilenceStarted: TimeInterval? {
+        lock.lock()
+        defer { lock.unlock() }
+        return silenceSince.map { Date().timeIntervalSince($0) }
     }
 
     var level: Float {
@@ -58,6 +134,7 @@ final class MeetingTrackWriter: @unchecked Sendable {
     private let logger: Logger
     private let onProblem: @Sendable (String) -> Void
     private let sessionHostTime: UInt64
+    private let url: URL
     private let timebase: mach_timebase_info_data_t
     let sampleRate: Double
     private let file: AVAudioFile
@@ -76,6 +153,7 @@ final class MeetingTrackWriter: @unchecked Sendable {
     private var firstTimedBuffer = true
     private var firstWriteError: String?
     private var failedWriteCount = 0
+    private var lastHeaderFlushAt = Date.distantPast
 
     var level: Float {
         levelLock.lock()
@@ -101,6 +179,10 @@ final class MeetingTrackWriter: @unchecked Sendable {
         queue.sync { writtenFrames }
     }
 
+    var receivedFrameCount: AVAudioFramePosition {
+        queue.sync { receivedFrames }
+    }
+
     var problem: String? {
         queue.sync {
             guard let firstWriteError else { return nil }
@@ -111,6 +193,7 @@ final class MeetingTrackWriter: @unchecked Sendable {
     init(url: URL, sampleRate: Double, sessionHostTime: UInt64, label: String,
          onProblem: @escaping @Sendable (String) -> Void = { _ in }) throws {
         self.sessionHostTime = sessionHostTime
+        self.url = url
         self.onProblem = onProblem
         var timebase = mach_timebase_info_data_t()
         mach_timebase_info(&timebase)
@@ -153,6 +236,7 @@ final class MeetingTrackWriter: @unchecked Sendable {
     func finish() {
         queue.sync {
             guard !closed else { return }
+            flushCAFHeaderIfNeeded(force: true)
             closed = true
             file.close()
         }
@@ -237,6 +321,7 @@ final class MeetingTrackWriter: @unchecked Sendable {
                 recentLevelHostTime = DispatchTime.now().uptimeNanoseconds
                 levelLock.unlock()
             }
+            flushCAFHeaderIfNeeded(force: false)
         } catch {
             failedWriteCount += 1
             if firstWriteError == nil {
@@ -278,6 +363,43 @@ final class MeetingTrackWriter: @unchecked Sendable {
             try file.write(from: silence)
             writtenFrames += AVAudioFramePosition(count)
             remaining -= AVAudioFramePosition(count)
+        }
+    }
+
+    /// CAF accepts a data chunk size of -1 while a file is being written. Refresh it periodically so the
+    /// track remains readable if Voicer exits before `AVAudioFile.close()` can write the final header.
+    private func flushCAFHeaderIfNeeded(force: Bool) {
+        guard receivedFrames > 0,
+              force || Date().timeIntervalSince(lastHeaderFlushAt) >= 3 else { return }
+        do {
+            let reader = try FileHandle(forReadingFrom: url)
+            defer { try? reader.close() }
+            var offset: UInt64 = 8
+            while true {
+                try reader.seek(toOffset: offset)
+                guard let header = try reader.read(upToCount: 12), header.count == 12 else { return }
+                let chunkID = String(data: header.prefix(4), encoding: .ascii)
+                let payloadStart = offset + 12
+                if chunkID == "data" {
+                    let fileLength = try reader.seekToEnd()
+                    guard fileLength >= payloadStart else { return }
+                    let chunkSize = (fileLength - payloadStart).bigEndian
+                    var sizeData = Data()
+                    withUnsafeBytes(of: chunkSize) { sizeData.append(contentsOf: $0) }
+                    let writer = try FileHandle(forUpdating: url)
+                    defer { try? writer.close() }
+                    try writer.seek(toOffset: offset + 4)
+                    try writer.write(contentsOf: sizeData)
+                    try writer.synchronize()
+                    lastHeaderFlushAt = Date()
+                    return
+                }
+                let declaredSize = header.dropFirst(4).reduce(UInt64(0)) { ($0 << 8) | UInt64($1) }
+                guard declaredSize < UInt64.max else { return }
+                offset = payloadStart + declaredSize
+            }
+        } catch {
+            logger.error("Could not flush CAF header: \(error.localizedDescription, privacy: .public)")
         }
     }
 

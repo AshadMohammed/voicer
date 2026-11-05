@@ -4,20 +4,25 @@ import SwiftUI
 /// The Meetings page: start or stop a recording, import a file, see what's being written up, and read past meetings.
 struct MeetingsView: View {
     @ObservedObject private var coordinator = MeetingsCoordinator.shared
-    @State private var openMeeting: MeetingRecord?
+    @EnvironmentObject private var navigation: MainWindowNavigation
+
+    private var openMeeting: MeetingRecord? {
+        guard let id = navigation.activeMeetingID else { return nil }
+        return coordinator.meetings.first { $0.id == id }
+    }
 
     var body: some View {
         ZStack {
             if let meeting = openMeeting {
                 MeetingDetailView(meeting: meeting) {
-                    openMeeting = nil
+                    navigation.closeMeeting()
                 }
                 .transition(.opacity)
             } else {
                 list
             }
         }
-        .animation(.easeOut(duration: 0.16), value: openMeeting?.id)
+        .animation(.easeOut(duration: 0.16), value: navigation.activeMeetingID)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .ignoresSafeArea(.container, edges: .top)
         .onAppear {
@@ -27,13 +32,9 @@ struct MeetingsView: View {
         .onChange(of: coordinator.selectedMeetingID) { _, _ in openRequestedMeeting() }
         .onChange(of: coordinator.meetings) { _, meetings in
             openRequestedMeeting()
-            // A meeting deleted from its detail page closes it.
-            if let open = openMeeting {
-                if let fresh = meetings.first(where: { $0.id == open.id }) {
-                    if fresh != open { openMeeting = fresh }
-                } else {
-                    openMeeting = nil
-                }
+            navigation.pruneMeetingRoutes(keeping: Set(meetings.map(\.id)))
+            if let id = navigation.activeMeetingID, !meetings.contains(where: { $0.id == id }) {
+                navigation.discardMeeting(id: id)
             }
         }
     }
@@ -42,7 +43,7 @@ struct MeetingsView: View {
         guard let id = coordinator.selectedMeetingID,
             let meeting = coordinator.meetings.first(where: { $0.id == id })
         else { return }
-        openMeeting = meeting
+        navigation.showMeeting(id: meeting.id)
         coordinator.selectedMeetingID = nil
     }
 
@@ -86,7 +87,7 @@ struct MeetingsView: View {
                                     if index > 0 {
                                         Rectangle().fill(AppTheme.Palette.line).frame(height: 1)
                                     }
-                                    MeetingRow(meeting: meeting) { openMeeting = meeting }
+                                    MeetingRow(meeting: meeting) { navigation.showMeeting(id: meeting.id) }
                                 }
                             }
                             .clipShape(RoundedRectangle(cornerRadius: AppTheme.Radius.card, style: .continuous))
@@ -198,6 +199,17 @@ private struct MeetingRecordingCard: View {
                 Text("Your microphone and the call's audio are recorded as two tracks. Let people know you're recording.")
                     .font(.appSans(12))
                     .foregroundStyle(AppTheme.Palette.muted)
+                if let problem = coordinator.captureProblem {
+                    Label(problem, systemImage: "exclamationmark.triangle.fill")
+                        .font(.appSans(12, weight: .medium))
+                        .foregroundStyle(AppTheme.Palette.recording)
+                        .fixedSize(horizontal: false, vertical: true)
+                } else if let notice = coordinator.captureDeviceNotice {
+                    Label(notice, systemImage: "mic.fill")
+                        .font(.appSans(12, weight: .medium))
+                        .foregroundStyle(AppTheme.Palette.inkSoft)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
             Spacer(minLength: 12)
             TimelineView(.periodic(from: .now, by: 1)) { context in

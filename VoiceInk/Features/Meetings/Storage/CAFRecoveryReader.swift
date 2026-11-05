@@ -54,4 +54,29 @@ enum CAFRecoveryReader {
         }
         throw RecoveryError.missingAudioData
     }
+
+    /// A CAF can be several kilobytes long with its header alone. Count sample bytes after the data chunk's
+    /// four-byte edit count, even when those samples are all zero.
+    static func containsAudioData(of url: URL) -> Bool {
+        guard let contents = try? Data(contentsOf: url, options: .mappedIfSafe),
+              contents.count >= 20,
+              String(data: contents.prefix(4), encoding: .ascii) == "caff" else { return false }
+        var offset = 8
+        while offset + 12 <= contents.count {
+            let chunkID = String(data: contents[offset..<(offset + 4)], encoding: .ascii)
+            let declaredSize = contents[(offset + 4)..<(offset + 12)].reduce(UInt64(0)) {
+                ($0 << 8) | UInt64($1)
+            }
+            let payloadStart = offset + 12
+            let available = contents.count - payloadStart
+            if chunkID == "data" {
+                guard available > 4 else { return false }
+                let dataChunkSize = min(declaredSize, UInt64(available))
+                return dataChunkSize > 4
+            }
+            guard declaredSize < UInt64.max, declaredSize <= UInt64(available) else { return false }
+            offset = payloadStart + Int(declaredSize)
+        }
+        return false
+    }
 }

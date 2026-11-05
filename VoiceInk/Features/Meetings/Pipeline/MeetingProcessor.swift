@@ -65,7 +65,10 @@ enum MeetingProcessor {
             let callSamples = try callURL.map { try analyzer.samples(from: $0) } ?? []
             duration = Double(max(micSamples.count, callSamples.count)) / MeetingAudioAnalyzer.sampleRate
             if microphoneURL == nil {
-                notes.append("Your microphone wasn't recorded, so only the call's audio is transcribed.")
+                notes.append("Microphone audio was not recorded, so only the call's audio is transcribed.")
+            }
+            if callURL == nil {
+                notes.append("Call audio was not recorded, so only microphone audio is transcribed.")
             }
 
             if MeetingAudioAnalyzer.isSilent(callSamples) {

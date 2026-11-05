@@ -144,6 +144,10 @@ private struct TriggerTextChip: View {
                     .foregroundStyle(.secondary)
                     .frame(width: 14, height: 14)
             }
+            .frame(width: 28, height: 28)
+            .contentShape(Rectangle())
+            // Keep the chip's look while giving the glyph a 28 pt target.
+            .padding(-7)
             .buttonStyle(.plain)
             .help(removeHelp)
         }
@@ -304,6 +308,8 @@ struct TriggerRemoveButton: View {
                 .font(.system(size: 12, weight: .medium))
                 .symbolRenderingMode(.hierarchical)
                 .foregroundStyle(.secondary)
+                .frame(width: 28, height: 28)
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .help("Remove trigger")
@@ -319,6 +325,8 @@ struct TriggerEditButton: View {
                 .font(.system(size: 12, weight: .medium))
                 .symbolRenderingMode(.hierarchical)
                 .foregroundStyle(.secondary)
+                .frame(width: 28, height: 28)
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .help("Edit trigger group")
