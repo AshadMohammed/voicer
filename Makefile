@@ -6,7 +6,7 @@ LOCAL_DERIVED_DATA := $(CURDIR)/.local-build
 LOCAL_CODESIGN_IDENTITY ?=
 RUN_APP_NAME ?= Voicer
 
-.PHONY: all clean whisper setup build local check healthcheck help dev run release release-setup
+.PHONY: all clean whisper setup build local signing-cert check healthcheck help dev run release release-setup
 
 # Default target
 all: check build
@@ -50,11 +50,18 @@ build: setup
 		-skipMacroValidation \
 		build
 
-# Build locally with stable Apple Development signing when available.
+# One-time: create a free local signing certificate so rebuilds keep their macOS permissions.
+signing-cert:
+	@./scripts/create-local-signing-cert.sh
+
+# Build locally with stable signing when available: the "Voicer Local Signing" certificate, else one Apple Development identity.
 local: check setup
 	@echo "Building Voicer for local use (no Apple Developer certificate required)..."
 	@rm -rf "$(LOCAL_DERIVED_DATA)"
 	@SIGNING_IDENTITY="$(LOCAL_CODESIGN_IDENTITY)"; \
+	if [ -z "$$SIGNING_IDENTITY" ]; then \
+		SIGNING_IDENTITY=$$(security find-identity -v -p codesigning 2>/dev/null | awk '/"Voicer Local Signing"/ { print $$2; exit }'); \
+	fi; \
 	if [ -z "$$SIGNING_IDENTITY" ]; then \
 		SIGNING_IDENTITIES=$$(security find-identity -v -p codesigning 2>/dev/null | awk '/"Apple Development: / { print $$2 }'); \
 		SIGNING_IDENTITY_COUNT=$$(printf '%s\n' "$$SIGNING_IDENTITIES" | awk 'NF { count++ } END { print count + 0 }'); \

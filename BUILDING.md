@@ -17,7 +17,15 @@ open ~/Downloads/Voicer.app
 
 `make local` prepares a macOS-only `whisper.xcframework` in `~/VoiceInk-Dependencies` (with `scripts/build-whisper-xcframework-macos.sh`, so the iOS, tvOS and visionOS platforms are not needed), builds Release in `.local-build`, and copies `Voicer.app` to `~/Downloads`.
 
-It uses `LocalBuild.xcconfig`, `VoiceInk.local.entitlements`, and the `LOCAL_BUILD` Swift flag. Without an override, it uses the only available Apple Development identity or falls back to ad-hoc signing when none or multiple are found.
+It uses `LocalBuild.xcconfig`, `VoiceInk.local.entitlements`, and the `LOCAL_BUILD` Swift flag. Without an override, it uses the `Voicer Local Signing` certificate if you created one, else the only available Apple Development identity, and falls back to ad-hoc signing when neither is found.
+
+To stop macOS asking for permissions (Accessibility, Microphone, ...) after every rebuild, run this once. It creates a free self-signed certificate in your login keychain, and macOS asks for your password to trust it:
+
+```bash
+make signing-cert
+```
+
+The next `make local` signs with it, and the permissions you grant then survive later rebuilds.
 
 Choose an identity explicitly:
 
