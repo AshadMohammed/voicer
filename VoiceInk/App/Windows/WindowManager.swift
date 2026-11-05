@@ -24,8 +24,19 @@ enum WindowDiagnostics {
 
 enum AppPresentationPolicy {
     static func activateForUserFacingWindow() {
-        NSApplication.shared.setActivationPolicy(.regular)
-        NSApplication.shared.activate(ignoringOtherApps: true)
+        let app = NSApplication.shared
+        if app.activationPolicy() != .regular {
+            app.setActivationPolicy(.regular)
+        }
+        app.activate(ignoringOtherApps: true)
+
+        // Right after leaving accessory mode the first activation can be ignored, which leaves Voicer
+        // at the end of the Cmd-Tab list instead of first. Try once more when it did not take.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+            if !app.isActive {
+                app.activate(ignoringOtherApps: true)
+            }
+        }
     }
 
     static func restoreAccessoryIfNeededAfterUserFacingWindowClosed() {
