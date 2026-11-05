@@ -564,7 +564,7 @@ private struct AutoLearnReviewProposalRow: View {
             Image(systemName: systemImage)
                 .font(.system(size: 11, weight: .semibold))
                 .foregroundStyle(isSelected ? AppTheme.Text.primary : AppTheme.Text.muted)
-                .frame(width: 30, height: 26)
+                .frame(width: 30, height: 28)
                 .background(QuickPanelButtonBackground(isSelected: isSelected))
         }
         .buttonStyle(.plain)

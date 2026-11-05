@@ -37,7 +37,11 @@ final class MeetingAudioAnalyzer {
 
     /// Any audio or video file, as 16 kHz mono samples.
     func samples(from url: URL) throws -> [Float] {
-        try converter.resampleAudioFile(url)
+        let repairedURL = try CAFRecoveryReader.repairedCopyIfNeeded(of: url)
+        defer {
+            if let repairedURL { try? FileManager.default.removeItem(at: repairedURL) }
+        }
+        return try converter.resampleAudioFile(repairedURL ?? url)
     }
 
     /// True when a track never rises above a whisper, for example the call audio of an in-person meeting

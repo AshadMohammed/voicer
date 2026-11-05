@@ -11,6 +11,15 @@ import os
 final class MeetingsCoordinator: ObservableObject {
     static let shared = MeetingsCoordinator()
 
+    static let silenceAutoPauseSettingKey = "pauseMeetingAfterSilence"
+
+    private static var silenceAutoPauseEnabled: Bool {
+        let defaults = UserDefaults.standard
+        return defaults.object(forKey: silenceAutoPauseSettingKey) == nil
+            ? true
+            : defaults.bool(forKey: silenceAutoPauseSettingKey)
+    }
+
     enum RecordingState: Equatable {
         case idle
         case starting
@@ -43,8 +52,21 @@ final class MeetingsCoordinator: ObservableObject {
 
     /// True while the recording is paused: nothing is written to either track.
     @Published private(set) var isPaused = false
+    @Published private(set) var isSilencePromptShown = false
+    @Published private(set) var isAutoPausedForSilence = false
+    @Published private(set) var captureProblem: String?
+    @Published private(set) var captureDeviceNotice: String?
     private var pausedAt: Date?
     private var pausedTotal: TimeInterval = 0
+    private var lastSpeechAt: Date?
+    private var silenceMonitorTask: Task<Void, Never>?
+
+    private enum SilencePolicy {
+        // RMS above -40 dBFS captures ordinary conversation while filtering faint room hiss and isolated low-level peaks.
+        static let speechRmsThreshold: Float = 0.01
+        static let promptAfter: TimeInterval = 10 * 60
+        static let pauseAfter: TimeInterval = 15 * 60
+    }
 
     /// How long the recording has run, not counting time spent paused.
     func elapsed(at date: Date = Date()) -> TimeInterval {
@@ -55,6 +77,8 @@ final class MeetingsCoordinator: ObservableObject {
 
     var microphoneLevel: Float { capture.microphoneLevel }
     var callLevel: Float { capture.callLevel }
+    private var microphoneSpeechLevel: Float { capture.microphoneSpeechLevel }
+    private var callSpeechLevel: Float { capture.callSpeechLevel }
 
     let store = MeetingStore.shared
     private let capture = MeetingCaptureEngine()
@@ -63,12 +87,19 @@ final class MeetingsCoordinator: ObservableObject {
     private var processingTail: Task<Void, Never>?
     private var storeObserver: NSObjectProtocol?
     private var activationObserver: NSObjectProtocol?
+    private var didScanInterruptedRecordings = false
     /// What the call was, noted when the recording starts: the title the meeting is saved under.
     private var recordingCallName: String?
 
     private init() {
         capture.onProblem = { message in
-            NotificationManager.shared.showNotification(title: message, type: .warning, duration: 6)
+            self.captureProblem = message
+            if let message {
+                NotificationManager.shared.showNotification(title: message, type: .warning, duration: 6)
+            }
+        }
+        capture.onDeviceNotice = { message in
+            self.captureDeviceNotice = message
         }
         storeObserver = NotificationCenter.default.addObserver(
             forName: MeetingStore.didChangeNotification, object: nil, queue: .main
@@ -85,6 +116,7 @@ final class MeetingsCoordinator: ObservableObject {
         // Meetings saved while Apple's model was still downloading get their summary once it's ready.
         Task {
             await loadMeetings()
+            await recoverInterruptedRecordings()
             summarisePendingMeetings()
         }
         guard activationObserver == nil else { return }
@@ -102,6 +134,40 @@ final class MeetingsCoordinator: ObservableObject {
     private func loadMeetings() async {
         let store = self.store
         meetings = await Task.detached { store.loadAll() }.value
+    }
+
+    private func recoverInterruptedRecordings() async {
+        guard !didScanInterruptedRecordings else { return }
+        guard !MeetingAudioAnalyzer.downloadedSpeechModels().isEmpty else {
+            logger.notice("Interrupted meeting recordings left for recovery because no speech model is downloaded")
+            return
+        }
+        didScanInterruptedRecordings = true
+
+        let activeID: UUID?
+        if case .recording(let id, _) = recordingState { activeID = id } else { activeID = nil }
+        let store = self.store
+        let candidates = await Task.detached { store.interruptedRecordings(excluding: activeID) }.value
+        for candidate in candidates {
+            let attempt = await Task.detached { store.beginRecoveryAttempt(for: candidate) }.value
+            guard let attempt else {
+                logger.error("Could not mark interrupted meeting \(candidate.id.uuidString, privacy: .public) for recovery")
+                continue
+            }
+            logger.notice("Recovering interrupted meeting \(candidate.id.uuidString, privacy: .public), attempt \(attempt)")
+            enqueue(
+                Job(id: candidate.id, title: "Recovered meeting", stage: String(localized: "Waiting to start")),
+                callName: "Recovered meeting",
+                audio: .tracks(microphone: candidate.microphoneURL, call: candidate.callURL),
+                source: .recorded,
+                startedAt: candidate.startedAt,
+                knownDuration: nil,
+                warnings: [],
+                importedFileName: nil,
+                isRecovery: true,
+                recoveryFolder: candidate.folder
+            )
+        }
     }
 
     // MARK: - Recording
@@ -128,16 +194,31 @@ final class MeetingsCoordinator: ObservableObject {
         do {
             let folder = try store.meetingFolder(for: id)
             // The same microphone dictation uses, so a meeting hears what the user set up.
-            let microphone = AudioDeviceManager.shared.getCurrentDevice()
-            try capture.start(folder: folder, microphoneDeviceID: microphone == 0 ? nil : microphone)
+            let audioDeviceManager = AudioDeviceManager.shared
+            let microphone = audioDeviceManager.getCurrentDevice()
+            let microphoneUID = audioDeviceManager.inputMode == .custom
+                ? UserDefaults.standard.selectedAudioDeviceUID
+                : nil
+            try capture.start(
+                folder: folder,
+                microphoneDeviceID: microphone == 0 ? nil : microphone,
+                microphoneDeviceUID: microphoneUID,
+                followsSystemDefaultInput: audioDeviceManager.inputMode == .systemDefault
+            )
             recordingCallName = CallDetector.shared.currentCallName
             isPaused = false
+            isSilencePromptShown = false
+            isAutoPausedForSilence = false
             pausedAt = nil
             pausedTotal = 0
             recordingState = .recording(id: id, startedAt: Date())
+            lastSpeechAt = Date()
+            startSilenceMonitoring()
             MeetingIndicatorController.shared.show()
             logger.notice("Meeting recording started")
         } catch {
+            silenceMonitorTask?.cancel()
+            silenceMonitorTask = nil
             recordingState = .idle
             try? FileManager.default.removeItem(at: store.dataFolder.appendingPathComponent(id.uuidString))
             logger.error("Meeting recording couldn't start: \(error.localizedDescription, privacy: .public)")
@@ -149,11 +230,13 @@ final class MeetingsCoordinator: ObservableObject {
         }
     }
 
-    func pauseRecording() {
+    func pauseRecording(forSilence: Bool = false) {
         guard isRecording, !isPaused else { return }
         capture.pause()
         pausedAt = Date()
         isPaused = true
+        isSilencePromptShown = false
+        isAutoPausedForSilence = forSilence
         logger.notice("Meeting recording paused")
     }
 
@@ -163,7 +246,15 @@ final class MeetingsCoordinator: ObservableObject {
         if let pausedAt { pausedTotal += Date().timeIntervalSince(pausedAt) }
         pausedAt = nil
         isPaused = false
+        isAutoPausedForSilence = false
+        lastSpeechAt = Date()
         logger.notice("Meeting recording resumed")
+    }
+
+    func keepRecordingAfterSilence() {
+        guard isRecording, !isPaused else { return }
+        lastSpeechAt = Date()
+        isSilencePromptShown = false
     }
 
     func togglePause() {
@@ -172,6 +263,10 @@ final class MeetingsCoordinator: ObservableObject {
 
     func stopRecording() {
         guard case .recording(let id, let startedAt) = recordingState else { return }
+        silenceMonitorTask?.cancel()
+        silenceMonitorTask = nil
+        isSilencePromptShown = false
+        isAutoPausedForSilence = false
         recordingState = .finishing
         isPaused = false
         pausedAt = nil
@@ -202,6 +297,40 @@ final class MeetingsCoordinator: ObservableObject {
                 type: .info,
                 duration: 3
             )
+        }
+    }
+
+    private func startSilenceMonitoring() {
+        silenceMonitorTask?.cancel()
+        silenceMonitorTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 250_000_000)
+                guard let self, self.isRecording else { return }
+                self.checkSilence()
+            }
+        }
+    }
+
+    private func checkSilence(at now: Date = Date()) {
+        guard isRecording, !isPaused else { return }
+
+        if max(microphoneSpeechLevel, callSpeechLevel) >= SilencePolicy.speechRmsThreshold {
+            lastSpeechAt = now
+            isSilencePromptShown = false
+            return
+        }
+
+        guard let lastSpeechAt else {
+            self.lastSpeechAt = now
+            return
+        }
+        let silentFor = now.timeIntervalSince(lastSpeechAt)
+        if Self.silenceAutoPauseEnabled, silentFor >= SilencePolicy.pauseAfter {
+            pauseRecording(forSilence: true)
+            MeetingIndicatorController.shared.revealForSilenceStatus()
+        } else if silentFor >= SilencePolicy.promptAfter, !isSilencePromptShown {
+            isSilencePromptShown = true
+            MeetingIndicatorController.shared.revealForSilenceStatus()
         }
     }
 
@@ -237,7 +366,9 @@ final class MeetingsCoordinator: ObservableObject {
         startedAt: Date,
         knownDuration: TimeInterval?,
         warnings: [String],
-        importedFileName: String?
+        importedFileName: String?,
+        isRecovery: Bool = false,
+        recoveryFolder: URL? = nil
     ) {
         jobs.append(job)
         let previous = processingTail
@@ -245,7 +376,8 @@ final class MeetingsCoordinator: ObservableObject {
             await previous?.value
             await self?.process(
                 job, callName: callName, audio: audio, source: source, startedAt: startedAt, knownDuration: knownDuration,
-                warnings: warnings, importedFileName: importedFileName)
+                warnings: warnings, importedFileName: importedFileName, isRecovery: isRecovery,
+                recoveryFolder: recoveryFolder)
         }
     }
 
@@ -257,7 +389,9 @@ final class MeetingsCoordinator: ObservableObject {
         startedAt: Date,
         knownDuration: TimeInterval?,
         warnings: [String],
-        importedFileName: String?
+        importedFileName: String?,
+        isRecovery: Bool,
+        recoveryFolder: URL?
     ) async {
         defer { jobs.removeAll { $0.id == job.id } }
         let jobID = job.id
@@ -284,6 +418,7 @@ final class MeetingsCoordinator: ObservableObject {
                 }
             } catch {
                 logger.error("Meeting processing failed: \(error.localizedDescription, privacy: .public)")
+                if isRecovery { return }
                 guard source == .recorded else {
                     NotificationManager.shared.showNotification(
                         title: String(format: String(localized: "Couldn't import %@: %@"), job.title, error.localizedDescription),
@@ -299,6 +434,10 @@ final class MeetingsCoordinator: ObservableObject {
                 record.summaryUnavailableReason = String(localized: "There is no transcript to summarise.")
             }
         } else {
+            if isRecovery {
+                logger.error("Interrupted meeting recovery skipped because no speech model is downloaded")
+                return
+            }
             guard source == .recorded else {
                 NotificationManager.shared.showNotification(
                     title: String(localized: "Download Parakeet Ultra in Settings to import meetings."),
@@ -315,10 +454,14 @@ final class MeetingsCoordinator: ObservableObject {
         if source == .recorded {
             record.title = callName ?? String(localized: "Meeting")
         }
+        if isRecovery, case .tracks(let microphone, let call) = audio {
+            record.audioFileNames = [microphone, call].compactMap { $0?.lastPathComponent }
+        }
 
         // One mixed file (you and the call together) for the Documents folder, made before the tracks are compressed.
         var mixedAudioURL: URL?
-        if case .tracks(let microphone, let call) = audio, MeetingStore.saveAudioToDocuments {
+        if case .tracks(let microphone, let call) = audio,
+           (microphone != nil || call != nil), MeetingStore.saveAudioToDocuments {
             update(jobID, stage: String(localized: "Saving audio"))
             if let folder = try? store.meetingFolder(for: record.id) {
                 let tempURL = folder.appendingPathComponent("mixed.m4a")
@@ -330,7 +473,7 @@ final class MeetingsCoordinator: ObservableObject {
             }
         }
 
-        if case .tracks(let microphone, let call) = audio {
+        if case .tracks(let microphone, let call) = audio, !isRecovery {
             update(jobID, stage: String(localized: "Saving"))
             var kept: [String] = []
             for url in [microphone, call].compactMap({ $0 }) {
@@ -349,6 +492,30 @@ final class MeetingsCoordinator: ObservableObject {
                 duration: 6
             )
             return
+        }
+
+        if isRecovery, let recoveryFolder,
+           case .tracks(let microphone, let call) = audio {
+            update(jobID, stage: String(localized: "Saving"))
+            var compressed: [(original: URL, saved: URL)] = []
+            for url in [microphone, call].compactMap({ $0 }) {
+                let saved = await MeetingAudioArchiver.compress(url, deleteOriginal: false)
+                compressed.append((url, saved))
+            }
+            record.audioFileNames = compressed.map { $0.saved.lastPathComponent }
+            do {
+                try store.save(&record)
+                for item in compressed where item.saved != item.original {
+                    try? FileManager.default.removeItem(at: item.original)
+                }
+                let candidate = MeetingStore.InterruptedRecording(
+                    id: record.id, folder: recoveryFolder, startedAt: record.startedAt,
+                    microphoneURL: microphone, callURL: call)
+                let store = self.store
+                await Task.detached { store.finishRecovery(for: candidate) }.value
+            } catch {
+                logger.error("Saving recovered meeting audio references failed: \(error.localizedDescription, privacy: .public)")
+            }
         }
 
         // The note now has its file name, so the audio can take the same one and the note can link to it.

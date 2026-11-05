@@ -155,11 +155,16 @@ struct CallDetectionPolicy {
         return actions
     }
 
-    mutating func browserTabChecked(_ source: CallSource, meetingSite: String?, now: Date) -> [Action] {
+    mutating func browserTabChecked(
+        _ source: CallSource,
+        meetingSite: String?,
+        fallbackName: String? = nil,
+        now: Date
+    ) -> [Action] {
         var actions: [Action] = []
         browserCheckOutstanding.remove(source)
 
-        if let site = meetingSite {
+        if let site = meetingSite ?? fallbackName {
             confirmedSites[source] = site
             // If no prompt is shown and not busy and not snoozed, show the prompt.
             if prompt == nil && !isBusy && !snoozed.contains(source) && activeSources[source] != nil {

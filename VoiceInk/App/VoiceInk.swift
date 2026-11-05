@@ -1,5 +1,6 @@
 import AppIntents
 import AppKit
+import Carbon.HIToolbox
 import FluidAudio
 import OSLog
 import SwiftData
@@ -404,7 +405,73 @@ struct VoiceInkApp: App {
         .defaultSize(width: AppWindowLayout.width, height: AppWindowLayout.minimumHeight)
         .windowResizability(.contentSize)
         .commands {
+            let _ = recordingShortcutManager.shortcutMenuRevision
             CommandGroup(replacing: .newItem) {}
+            CommandMenu("Go") {
+                commandButton(
+                    "Back",
+                    keyEquivalent: "[",
+                    modifiers: .command,
+                    shortcut: .key(keyCode: UInt16(kVK_ANSI_LeftBracket), modifierFlags: [.command])
+                ) { mainWindowNavigation.goBack() }
+                    .disabled(!mainWindowNavigation.canGoBack)
+                commandButton(
+                    "Forward",
+                    keyEquivalent: "]",
+                    modifiers: .command,
+                    shortcut: .key(keyCode: UInt16(kVK_ANSI_RightBracket), modifierFlags: [.command])
+                ) { mainWindowNavigation.goForward() }
+                    .disabled(!mainWindowNavigation.canGoForward)
+
+                Divider()
+
+                commandButton(
+                    "Dashboard", keyEquivalent: "1", modifiers: .command,
+                    shortcut: .key(keyCode: UInt16(kVK_ANSI_1), modifierFlags: [.command])
+                ) { mainWindowNavigation.navigate(to: .dashboard) }
+                commandButton(
+                    "Transcribe", keyEquivalent: "2", modifiers: .command,
+                    shortcut: .key(keyCode: UInt16(kVK_ANSI_2), modifierFlags: [.command])
+                ) { mainWindowNavigation.navigate(to: .transcribeAudio) }
+                commandButton(
+                    "History", keyEquivalent: "3", modifiers: .command,
+                    shortcut: .key(keyCode: UInt16(kVK_ANSI_3), modifierFlags: [.command])
+                ) { mainWindowNavigation.navigate(to: .history) }
+                commandButton(
+                    "Meetings", keyEquivalent: "4", modifiers: .command,
+                    shortcut: .key(keyCode: UInt16(kVK_ANSI_4), modifierFlags: [.command])
+                ) { mainWindowNavigation.navigate(to: .meetings) }
+                commandButton(
+                    "Dictionary", keyEquivalent: "5", modifiers: .command,
+                    shortcut: .key(keyCode: UInt16(kVK_ANSI_5), modifierFlags: [.command])
+                ) { mainWindowNavigation.navigate(to: .dictionary) }
+                commandButton(
+                    "Audio Setup", keyEquivalent: "6", modifiers: .command,
+                    shortcut: .key(keyCode: UInt16(kVK_ANSI_6), modifierFlags: [.command])
+                ) { mainWindowNavigation.navigate(to: .audio) }
+
+                Divider()
+
+                commandButton(
+                    "Settings", keyEquivalent: ",", modifiers: .command,
+                    shortcut: .key(keyCode: UInt16(kVK_ANSI_Comma), modifierFlags: [.command])
+                ) { mainWindowNavigation.navigate(to: .settings) }
+            }
+            CommandMenu("Meetings") {
+                commandButton(
+                    "Start or Stop Meeting Recording",
+                    keyEquivalent: "r",
+                    modifiers: [.command, .option, .shift],
+                    shortcut: .key(
+                        keyCode: UInt16(kVK_ANSI_R), modifierFlags: [.command, .option, .shift]
+                    )
+                ) {
+                    MeetingsCoordinator.shared.toggleRecording()
+                }
+                .disabled(
+                    MeetingsCoordinator.shared.recordingState == .starting
+                        || MeetingsCoordinator.shared.recordingState == .finishing)
+            }
         }
 
         MenuBarExtra(isInserted: $showMenuBarIcon) {
@@ -464,6 +531,22 @@ struct VoiceInkApp: App {
                 duration: 7.0,
                 actionButton: (String(localized: "Open Settings"), ModeSetupNavigator.openModesSettings)
             )
+        }
+    }
+
+    @ViewBuilder
+    private func commandButton(
+        _ title: LocalizedStringKey,
+        keyEquivalent: KeyEquivalent,
+        modifiers: SwiftUI.EventModifiers,
+        shortcut: Shortcut,
+        action: @escaping () -> Void
+    ) -> some View {
+        if ShortcutValidator.hasStoredShortcutConflicting(with: shortcut) {
+            Button(title, action: action)
+        } else {
+            Button(title, action: action)
+                .keyboardShortcut(keyEquivalent, modifiers: modifiers)
         }
     }
 

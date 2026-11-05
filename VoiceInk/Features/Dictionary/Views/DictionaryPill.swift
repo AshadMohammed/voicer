@@ -42,6 +42,8 @@ struct DictionaryPill<Label: View>: View {
                 Image(systemName: "xmark.circle.fill")
                     .symbolRenderingMode(.hierarchical)
                     .foregroundStyle(AppTheme.Text.primary)
+                    .frame(minWidth: 28, minHeight: 28)
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.borderless)
             .help(removeHelp)

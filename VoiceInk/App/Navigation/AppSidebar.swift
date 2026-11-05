@@ -1,7 +1,8 @@
 import SwiftUI
 
 struct AppSidebar: View {
-    @Binding var selectedView: ViewType
+    let selectedView: ViewType
+    let onSelect: (ViewType) -> Void
     @EnvironmentObject private var transcriptionModelManager: TranscriptionModelManager
     @ObservedObject private var modeManager = ModeManager.shared
 
@@ -93,7 +94,7 @@ struct AppSidebar: View {
                     viewType: viewType,
                     isSelected: selectedView == viewType
                 ) {
-                    selectedView = viewType
+                    onSelect(viewType)
                 }
             }
         }

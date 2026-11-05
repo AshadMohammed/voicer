@@ -106,6 +106,12 @@ enum ShortcutValidator {
         return nil
     }
 
+    static func hasStoredShortcutConflicting(with shortcut: Shortcut) -> Bool {
+        allStoredActions.contains { action in
+            ShortcutStore.shortcut(for: action)?.conflicts(with: shortcut) == true
+        }
+    }
+
     private static var allStoredActions: [ShortcutAction] {
         var seenActions = Set<ShortcutAction>()
         let actions =

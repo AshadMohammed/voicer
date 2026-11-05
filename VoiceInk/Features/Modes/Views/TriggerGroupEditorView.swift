@@ -72,6 +72,8 @@ struct TriggerGroupEditorView: View {
                         Image(systemName: "xmark.circle.fill")
                             .foregroundStyle(.secondary)
                             .font(.system(size: 12))
+                            .frame(width: 28, height: 28)
+                            .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                 }

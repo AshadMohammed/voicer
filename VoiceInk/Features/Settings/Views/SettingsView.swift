@@ -75,6 +75,8 @@ struct SettingsView: View {
                             } label: {
                                 Image(systemName: "minus.circle.fill")
                                     .foregroundColor(.secondary)
+                                    .frame(minWidth: 28, minHeight: 28)
+                                    .contentShape(Rectangle())
                             }
                             .buttonStyle(.plain)
                         }
@@ -131,6 +133,8 @@ struct SettingsView: View {
                             cancelRecordingShortcutRecorderResetID += 1
                         } label: {
                             Image(systemName: "arrow.counterclockwise")
+                                .frame(minWidth: 28, minHeight: 28)
+                                .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
                         .help("Reset to default")

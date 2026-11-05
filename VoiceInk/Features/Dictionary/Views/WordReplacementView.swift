@@ -102,6 +102,8 @@ struct WordReplacementView: View {
                     showInfoPopover.toggle()
                 } label: {
                     Image(systemName: "info.circle")
+                        .frame(minWidth: 28, minHeight: 28)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.borderless)
                 .help("Word replacement examples")
@@ -132,6 +134,7 @@ struct WordReplacementView: View {
                             }
                             .frame(maxWidth: .infinity, alignment: .leading)
                         }
+                        .frame(minHeight: 28, alignment: .leading)
                         .buttonStyle(.plain)
                         .help("Sort by original")
 
@@ -158,6 +161,7 @@ struct WordReplacementView: View {
                             }
                             .frame(maxWidth: .infinity, alignment: .leading)
                         }
+                        .frame(minHeight: 28, alignment: .leading)
                         .buttonStyle(.plain)
                         .help("Sort by replacement")
                     }
@@ -391,6 +395,8 @@ struct ReplacementRow: View {
                             .symbolRenderingMode(.hierarchical)
                             .foregroundStyle(AppTheme.Text.primary)
                             .contentTransition(.symbolEffect(.replace))
+                            .frame(minWidth: 28, minHeight: 28)
+                            .contentShape(Rectangle())
                     }
                     .buttonStyle(.borderless)
                     .help("Edit replacement")
@@ -400,6 +406,8 @@ struct ReplacementRow: View {
                             .symbolRenderingMode(.hierarchical)
                             .foregroundStyle(AppTheme.Text.primary)
                             .contentTransition(.symbolEffect(.replace))
+                            .frame(minWidth: 28, minHeight: 28)
+                            .contentShape(Rectangle())
                     }
                     .buttonStyle(.borderless)
                     .help("Remove replacement")

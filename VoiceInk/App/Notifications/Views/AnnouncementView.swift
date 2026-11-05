@@ -21,6 +21,8 @@ struct AnnouncementView: View {
                     Image(systemName: "xmark")
                         .font(.system(size: 11, weight: .medium))
                         .foregroundColor(.white.opacity(0.7))
+                        .frame(width: 28, height: 28)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(PlainButtonStyle())
             }
@@ -43,6 +45,7 @@ struct AnnouncementView: View {
                         .foregroundColor(.black)
                         .padding(.horizontal, 10)
                         .padding(.vertical, 6)
+                        .frame(minHeight: 28)
                         .background(Color.white)
                         .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                 }
@@ -54,6 +57,7 @@ struct AnnouncementView: View {
                         .foregroundColor(.white.opacity(0.9))
                         .padding(.horizontal, 8)
                         .padding(.vertical, 6)
+                        .frame(minHeight: 28)
                 }
                 .buttonStyle(PlainButtonStyle())
             }

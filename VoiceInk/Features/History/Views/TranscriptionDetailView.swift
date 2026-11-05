@@ -47,14 +47,7 @@ struct TranscriptionDetailView: View {
 
     private var header: some View {
         HStack(spacing: 12) {
-            Button(action: onBack) {
-                Image(systemName: "chevron.left")
-                    .font(.system(size: 14, weight: .semibold))
-            }
-            .buttonStyle(.plain)
-            .keyboardShortcut("[", modifiers: .command)
-            .help("Back to history")
-            .accessibilityLabel("Back to history")
+            backButton
 
             Text("Transcription Details")
                 .font(.system(size: 14, weight: .semibold))
@@ -69,6 +62,18 @@ struct TranscriptionDetailView: View {
         }
         .padding(.horizontal, HistoryLayout.headerInset)
         .frame(height: 52)
+    }
+
+    private var backButton: some View {
+        Button(action: onBack) {
+            Image(systemName: "chevron.left")
+                .font(.system(size: 14, weight: .semibold))
+                .frame(minWidth: 28, minHeight: 28)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help("Back to history")
+        .accessibilityLabel("Back to history")
     }
 
     private var transcriptionContent: some View {

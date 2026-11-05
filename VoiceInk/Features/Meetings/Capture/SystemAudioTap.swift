@@ -31,18 +31,25 @@ final class SystemAudioTap: @unchecked Sendable {
     private let ioQueue = DispatchQueue(label: "com.ashadmohammed.voicer.meeting.system-audio.io", qos: .userInteractive)
     private let logger = Logger(subsystem: "com.ashadmohammed.voicer", category: "MeetingCapture")
     private let handler: Handler
-    private let onProblem: @Sendable (String) -> Void
+    private let onProblem: @Sendable (String?) -> Void
     private let pool = OSAllocatedUnfairLock(initialState: PoolState())
     private var drainTimer: DispatchSourceTimer?
     private let contentionDrops = Atomic<Int>(0)
+    private let latestFramesAt = Atomic<UInt64>(0)
     private var tapID: AudioObjectID = kAudioObjectUnknown
     private var aggregateID: AudioDeviceID = kAudioObjectUnknown
     private var ioProcID: AudioDeviceIOProcID?
     private var tapFormat = AudioStreamBasicDescription()
     private var outputListener: AudioObjectPropertyListenerBlock?
+    private var watchdog: DispatchSourceTimer?
+    private var retryAt: Date?
     private var running = false
+    /// When the current tap attempt started. Frames must arrive after this, not just before it.
+    private var attemptStartedAt: UInt64 = 0
+    /// When the current warning was raised, so only audio captured afterwards can clear it.
+    private var problemRaisedAt: UInt64 = 0
 
-    init(handler: @escaping Handler, onProblem: @escaping @Sendable (String) -> Void = { _ in }) {
+    init(handler: @escaping Handler, onProblem: @escaping @Sendable (String?) -> Void = { _ in }) {
         self.handler = handler
         self.onProblem = onProblem
     }
@@ -59,16 +66,22 @@ final class SystemAudioTap: @unchecked Sendable {
         }
     }
 
-    func start() throws {
-        try queue.sync {
-            try startIOProc()
+    func start() {
+        queue.sync {
+            guard !running else { return }
             running = true
             installOutputListener()
+            rebuildTap(retrying: false)
             let timer = DispatchSource.makeTimerSource(queue: queue)
             timer.schedule(deadline: .now() + .milliseconds(50), repeating: .milliseconds(50))
             timer.setEventHandler { [weak self] in self?.drainSlots() }
             drainTimer = timer
             timer.resume()
+            let watchdog = DispatchSource.makeTimerSource(queue: queue)
+            watchdog.schedule(deadline: .now() + .seconds(1), repeating: .seconds(1))
+            watchdog.setEventHandler { [weak self] in self?.checkForMissingFrames() }
+            self.watchdog = watchdog
+            watchdog.resume()
         }
     }
 
@@ -79,8 +92,63 @@ final class SystemAudioTap: @unchecked Sendable {
             tearDownDeviceAndTap()
             drainTimer?.cancel()
             drainTimer = nil
+            watchdog?.cancel()
+            watchdog = nil
             drainSlots()
         }
+    }
+
+    private func rebuildTap(retrying: Bool) {
+        guard running else { return }
+        tearDownDeviceAndTap()
+        do {
+            try createTapAndDevice()
+            try startIOProc()
+            // Do not touch latestFramesAt here: a successful rebuild is not audio. Give the new tap four
+            // seconds to deliver a frame, but leave any existing warning up until one really arrives.
+            attemptStartedAt = DispatchTime.now().uptimeNanoseconds
+            if !retrying { retryAt = nil }
+        } catch {
+            let message = "Call audio is not coming through."
+            problemRaisedAt = DispatchTime.now().uptimeNanoseconds
+            pool.withLock { $0.problem = message }
+            retryAt = Date().addingTimeInterval(10)
+            logger.error("Could not start system audio capture: \(error.localizedDescription, privacy: .public)")
+            onProblem(message)
+        }
+    }
+
+    private func checkForMissingFrames() {
+        guard running else { return }
+        let now = DispatchTime.now().uptimeNanoseconds
+        let lastFramesAt = latestFramesAt.load(ordering: .relaxed)
+        // The tap was just (re)started, so keep the old "no frames" mark out of the grace calculation.
+        let since = lastFramesAt > attemptStartedAt ? lastFramesAt : attemptStartedAt
+        let hasRecentFrames = since > 0 && now >= since && now - since < 4_000_000_000
+        if hasRecentFrames {
+            retryAt = nil
+            let hasAudioSinceProblem = lastFramesAt > problemRaisedAt
+            guard hasAudioSinceProblem else { return }
+            let cleared = pool.withLock { state -> Bool in
+                guard state.problem != nil else { return false }
+                state.problem = nil
+                return true
+            }
+            if cleared { onProblem(nil) }
+            return
+        }
+
+        let message = "Call audio is not coming through."
+        let added = pool.withLock { state -> Bool in
+            guard state.problem != message else { return false }
+            state.problem = message
+            return true
+        }
+        problemRaisedAt = now
+        if added { onProblem(message) }
+        if let retryAt, Date() < retryAt { return }
+        retryAt = Date().addingTimeInterval(10)
+        rebuildTap(retrying: true)
     }
 
     private func createTapAndDevice() throws {
@@ -165,6 +233,7 @@ final class SystemAudioTap: @unchecked Sendable {
                 frames = Int(list[0].mDataByteSize) / (bytesPerSample * channels)
             }
             guard frames > 0 else { return true }
+            self.latestFramesAt.store(DispatchTime.now().uptimeNanoseconds, ordering: .relaxed)
             var slotIndex = -1
             for offset in 0..<state.slots.count {
                 let index = (state.writeCursor + offset) % state.slots.count
@@ -279,17 +348,7 @@ final class SystemAudioTap: @unchecked Sendable {
                                                  mElement: kAudioObjectPropertyElementMain)
         let listener: AudioObjectPropertyListenerBlock = { [weak self] _, _ in
             guard let self, self.running else { return }
-            self.tearDownDeviceAndTap()
-            do {
-                try self.createTapAndDevice()
-                try self.startIOProc()
-            }
-            catch {
-                let message = "Call audio stopped after the output device changed (\(error.localizedDescription))."
-                self.pool.withLock { $0.problem = $0.problem ?? message }
-                self.logger.error("Could not rebuild system audio capture: \(error.localizedDescription, privacy: .public)")
-                self.onProblem(message)
-            }
+            self.rebuildTap(retrying: false)
         }
         outputListener = listener
         let status = AudioObjectAddPropertyListenerBlock(AudioObjectID(kAudioObjectSystemObject), &address, queue, listener)
