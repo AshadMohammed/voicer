@@ -69,6 +69,10 @@ class MenuBarManager: ObservableObject {
 
             NSApplication.shared.setActivationPolicy(self.configuredActivationPolicy)
 
+            if self.configuredActivationPolicy == .accessory {
+                AppPresentationPolicy.markHiddenFromSwitcher()
+            }
+
             if self.isMenuBarOnly {
                 WindowManager.shared.hideMainWindow()
             }

@@ -23,19 +23,84 @@ enum WindowDiagnostics {
 }
 
 enum AppPresentationPolicy {
+    /// True while Voicer has been a hidden app since it last showed a window. The system adds a hidden app to the Cmd-Tab
+    /// list without an activation, so Voicer lands last and a quick Cmd-Tab goes to the wrong app. The first window after
+    /// that passes focus through the Dock process and back, so Voicer is registered as the app that came to the front.
+    /// Electron does the same when it shows its Dock icon. The Dock has no windows and is not in the Cmd-Tab list, so
+    /// nothing flickers and the app the user came from stays second.
+    private static var needsActivationRegistration = UserDefaults.standard.bool(forKey: "IsMenuBarOnly")
+    private static var registrationInFlight = false
+    private static var isRegistering = false
+    private static var registrationID = 0
+
     static func activateForUserFacingWindow() {
         let app = NSApplication.shared
         if app.activationPolicy() != .regular {
             app.setActivationPolicy(.regular)
         }
-        app.activate(ignoringOtherApps: true)
+        // One turn after the policy switch, so the system already sees Voicer as a normal app.
+        DispatchQueue.main.async {
+            app.activate(ignoringOtherApps: true)
+        }
+        registerActivationIfNeeded()
+    }
 
-        // Right after leaving accessory mode the first activation can be ignored, which leaves Voicer
-        // at the end of the Cmd-Tab list instead of first. Try once more when it did not take.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-            if !app.isActive {
-                app.activate(ignoringOtherApps: true)
+    /// Called when Voicer becomes a hidden app, so the next window registers its activation.
+    static func markHiddenFromSwitcher() {
+        needsActivationRegistration = true
+    }
+
+    private static func registerActivationIfNeeded() {
+        guard needsActivationRegistration, !registrationInFlight else { return }
+        registrationInFlight = true
+        isRegistering = true
+        registrationID += 1
+        let id = registrationID
+
+        // The window stays invisible while focus passes through the Dock, so the change of focus is never seen.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+            if id == registrationID { finishRegistration() }
+        }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+            // Opened without coming to the front: a later real switch to Voicer registers it, so nothing more to do.
+            needsActivationRegistration = false
+            guard NSApplication.shared.isActive,
+                let dock = NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.dock").first
+            else {
+                finishRegistration()
+                return
             }
+            dock.activate(options: [.activateIgnoringOtherApps])
+
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                // The user moved on to another app: leave it alone.
+                let front = NSWorkspace.shared.frontmostApplication
+                if front?.processIdentifier == dock.processIdentifier || front == NSRunningApplication.current {
+                    // An app cannot always bring itself forward, but an open request through the system is honoured.
+                    let configuration = NSWorkspace.OpenConfiguration()
+                    configuration.activates = true
+                    NSWorkspace.shared.openApplication(at: Bundle.main.bundleURL, configuration: configuration)
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                    if id == registrationID { finishRegistration() }
+                }
+            }
+        }
+    }
+
+    static func hideWhileRegistering(_ window: NSWindow) {
+        if isRegistering {
+            window.alphaValue = 0
+        }
+    }
+
+    private static func finishRegistration() {
+        guard isRegistering else { return }
+        isRegistering = false
+        registrationInFlight = false
+        for window in NSApplication.shared.windows where window.alphaValue == 0 && window.styleMask.contains(.titled) {
+            window.alphaValue = 1
         }
     }
 
@@ -47,6 +112,7 @@ enum AppPresentationPolicy {
             guard menuBarOnly else { return }
             guard !hasVisibleUserWindows else { return }
 
+            markHiddenFromSwitcher()
             NSApplication.shared.setActivationPolicy(.accessory)
             NSApplication.shared.deactivate()
         }
@@ -104,6 +170,7 @@ class WindowManager: NSObject {
         window.setFrameAutosaveName(Self.mainWindowAutosaveName)
         applyInitialPlacementIfNeeded(to: window)
         registerMainWindowIfNeeded(window)
+        AppPresentationPolicy.hideWhileRegistering(window)
 
         if shouldShowNextConfiguredMainWindow {
             shouldShowNextConfiguredMainWindow = false
@@ -196,6 +263,7 @@ class WindowManager: NSObject {
 
     private func presentMainWindow(_ window: NSWindow) {
         AppPresentationPolicy.activateForUserFacingWindow()
+        AppPresentationPolicy.hideWhileRegistering(window)
 
         if window.isMiniaturized {
             window.deminiaturize(nil)
