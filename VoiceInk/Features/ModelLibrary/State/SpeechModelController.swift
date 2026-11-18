@@ -39,6 +39,9 @@ final class SpeechModelController: ObservableObject {
         return fluidAudioModelManager?.isFluidAudioModelDownloaded(model) ?? false
     }
 
+    /// The selection key of the model Dictation records with right now, if it is one Voicer offers.
+    var activeModelKey: String? { activeModel?.selectionKey }
+
     var isInstalling: Bool { autoInstallTask != nil }
 
     /// The model Dictation records with, as long as it is the one Voicer offers.
@@ -76,6 +79,18 @@ final class SpeechModelController: ObservableObject {
         }
 
         if activeModel?.name == model.name, isDownloaded {
+            return
+        }
+
+        // Parakeet picked for dictation stays as long as its files are on disk. Meetings still need Nemotron,
+        // so it is downloaded in the background if missing, without taking over dictation.
+        if let active = activeModel as? FluidAudioModel, active.name != model.name,
+            fluidAudioModelManager?.isFluidAudioModelDownloaded(active) == true
+        {
+            if !isDownloaded {
+                _ = await download(model)
+                autoInstallFraction = nil
+            }
             return
         }
 
@@ -120,7 +135,7 @@ final class SpeechModelController: ObservableObject {
     }
 
     /// Points Dictation (and the app-wide default) at `model`.
-    private func select(_ model: any TranscriptionModel) {
+    func select(_ model: any TranscriptionModel) {
         if var mode = ModeManager.shared.getDefaultConfiguration() {
             mode.selectedTranscriptionModelName = model.selectionKey
             mode.selectedLanguage = TranscriptionLanguageSupport.validLanguageOrFallback(mode.selectedLanguage, for: model)

@@ -138,7 +138,7 @@ final class MeetingsCoordinator: ObservableObject {
 
     private func recoverInterruptedRecordings() async {
         guard !didScanInterruptedRecordings else { return }
-        guard !MeetingAudioAnalyzer.downloadedSpeechModels().isEmpty else {
+        guard MeetingAudioAnalyzer.isSpeechModelDownloaded() else {
             logger.notice("Interrupted meeting recordings left for recovery because no speech model is downloaded")
             return
         }
@@ -400,13 +400,15 @@ final class MeetingsCoordinator: ObservableObject {
             id: job.id, title: "", startedAt: startedAt, duration: knownDuration ?? 0, source: source,
             importedFileName: importedFileName, notes: warnings)
 
-        if let version = MeetingAudioAnalyzer.downloadedSpeechModels().first {
+        var engineName = "Nemotron"
+        if MeetingAudioAnalyzer.isSpeechModelDownloaded() {
             do {
-                let result = try await MeetingProcessor.process(audio, asrVersion: version) { [weak self] stage in
+                let result = try await MeetingProcessor.process(audio) { [weak self] stage in
                     Task { @MainActor in self?.update(jobID, stage: stage) }
                 }
                 record.utterances = result.utterances
                 record.notes += result.notes
+                engineName = result.engineName
                 if result.duration > 0, knownDuration == nil || knownDuration == 0 { record.duration = result.duration }
                 switch result.summary {
                 case .summary(let summary):
@@ -440,14 +442,14 @@ final class MeetingsCoordinator: ObservableObject {
             }
             guard source == .recorded else {
                 NotificationManager.shared.showNotification(
-                    title: String(localized: "Download Parakeet Ultra in Settings to import meetings."),
+                    title: String(localized: "Download Nemotron Multilingual in Settings to import meetings."),
                     type: .warning,
                     duration: 6
                 )
                 return
             }
             record.notes.append(
-                String(localized: "No Parakeet model is downloaded, so this meeting wasn't transcribed. The audio is kept with the meeting."))
+                String(localized: "No Nemotron model is downloaded, so this meeting wasn't transcribed. The audio is kept with the meeting."))
             record.summaryUnavailableReason = String(localized: "There is no transcript to summarise.")
         }
 
@@ -528,7 +530,7 @@ final class MeetingsCoordinator: ObservableObject {
                 try? FileManager.default.removeItem(at: mixedAudioURL)
             }
         }
-        addHistoryEntry(for: record, modelName: "Parakeet")
+        addHistoryEntry(for: record, modelName: engineName)
 
         let savedID = record.id
         NotificationManager.shared.showNotification(

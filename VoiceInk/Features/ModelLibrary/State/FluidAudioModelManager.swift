@@ -115,6 +115,12 @@ class FluidAudioModelManager: ObservableObject {
         return .parakeet(asrVersion(for: modelName))
     }
 
+    /// True when the named Nemotron model's files are all on disk. Usable off the main actor.
+    nonisolated static func isNemotronModelDownloaded(named modelName: String) -> Bool {
+        guard isNemotronModel(named: modelName) else { return false }
+        return nemotronRequiredFilesExist(in: nemotronCacheDirectory(for: modelName))
+    }
+
     nonisolated static func nemotronLanguageHint(from languageCode: String?) -> String {
         let trimmed = languageCode?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         guard !trimmed.isEmpty else { return "auto" }

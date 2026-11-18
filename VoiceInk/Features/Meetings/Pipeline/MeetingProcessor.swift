@@ -15,6 +15,8 @@ struct MeetingResult: Sendable {
     var duration: TimeInterval
     /// Things worth telling the reader of the note, such as a silent call track.
     var notes: [String]
+    /// Who wrote the words: "Nemotron".
+    var engineName: String
 }
 
 /// Runs a finished meeting through transcription, speaker labelling and the summary.
@@ -23,10 +25,9 @@ enum MeetingProcessor {
 
     static func process(
         _ audio: MeetingAudio,
-        asrVersion: AsrModelVersion,
         progress: @escaping @Sendable (String) -> Void = { _ in }
     ) async throws -> MeetingResult {
-        let analyzer = MeetingAudioAnalyzer(asrVersion: asrVersion)
+        let analyzer = MeetingAudioAnalyzer()
         let transcript: Transcript
         do {
             transcript = try await transcribe(audio, analyzer: analyzer, progress: progress)
@@ -40,13 +41,15 @@ enum MeetingProcessor {
         progress("Writing the summary")
         let summary = await MeetingSummarizer.summarize(transcript: MeetingTranscriptAssembler.plainText(transcript.utterances))
         return MeetingResult(
-            utterances: transcript.utterances, summary: summary, duration: transcript.duration, notes: transcript.notes)
+            utterances: transcript.utterances, summary: summary, duration: transcript.duration, notes: transcript.notes,
+            engineName: transcript.engineName)
     }
 
     private struct Transcript {
         var utterances: [MeetingUtterance]
         var duration: TimeInterval
         var notes: [String]
+        var engineName: String
     }
 
     private static func transcribe(
@@ -127,7 +130,8 @@ enum MeetingProcessor {
             groups.append(try await labelledByVoice(samples, analyzer: analyzer, firstNumber: 1, progress: progress))
         }
 
-        return Transcript(utterances: MeetingTranscriptAssembler.merged(groups), duration: duration, notes: notes)
+        return Transcript(
+            utterances: MeetingTranscriptAssembler.merged(groups), duration: duration, notes: notes, engineName: "Nemotron")
     }
 
     /// One track with several people on it: transcribe, then split it by voice.
