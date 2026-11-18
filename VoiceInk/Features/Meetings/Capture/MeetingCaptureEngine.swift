@@ -63,6 +63,20 @@ final class MeetingCaptureEngine {
     private var watchdogGraceUntil = Date.distantPast
     private var sleepWatchdogGracePending = false
     private var sleepWatchdogGraceStartedAt: Date?
+    // Recovery from a microphone capture whose queue is stuck inside AVAudioEngine.
+    private var microphoneLiveness: MeetingMicrophoneLivenessMonitor?
+    private var microphoneRelay: MeetingMicrophoneRelay?
+    private var microphoneGaps = MeetingMicrophoneGapLog(sessionHostTime: 0)
+    private var microphoneGeneration: UInt64 = 0
+    private var microphoneRecoveryTask: Task<Void, Never>?
+    private var nextMicrophoneAttemptAt = Date.distantPast
+    private var microphoneFailures = 0
+    private var countedFailureGeneration: UInt64 = 0
+    private var didWarnAboutMicrophone = false
+    /// Captures given up on. They are kept for good: dropping the last reference to an AVAudioEngine whose queue is stuck
+    /// inside it could block the thread that drops it, and a few leaked engines cost nothing.
+    private var abandonedMicrophones: [MeetingMicrophoneCapture] = []
+    private static let freshMicrophoneRetryInterval: TimeInterval = 10
 
     init() {}
 
@@ -98,10 +112,21 @@ final class MeetingCaptureEngine {
         watchdogGraceUntil = .distantPast
         sleepWatchdogGracePending = false
         sleepWatchdogGraceStartedAt = nil
+        microphoneRecoveryTask?.cancel()
+        microphoneRecoveryTask = nil
+        microphoneRelay?.close()
+        microphoneRelay = nil
+        microphoneLiveness?.stop()
+        microphoneLiveness = nil
+        microphoneFailures = 0
+        countedFailureGeneration = 0
+        didWarnAboutMicrophone = false
+        nextMicrophoneAttemptAt = .distantPast
         observeSystemSleep()
         microphoneSink.resume(at: 0)
         callSink.resume(at: 0)
         sessionHostTime = mach_absolute_time()
+        microphoneGaps = MeetingMicrophoneGapLog(sessionHostTime: sessionHostTime)
 
         let microphoneURL = folder.appendingPathComponent("microphone.caf")
         do {
@@ -144,6 +169,16 @@ final class MeetingCaptureEngine {
         }
 
         if microphoneWriter != nil {
+            let micSink = microphoneSink
+            let monitor = MeetingMicrophoneLivenessMonitor(
+                secondsSinceFrame: { micSink.secondsSinceLastFrame },
+                onWedged: { [weak self] capture in
+                    Task { @MainActor [weak self] in
+                        self?.microphoneWedged(capture, sessionID: sessionID)
+                    }
+                })
+            microphoneLiveness = monitor
+            monitor.start()
             startMicrophoneIfAuthorized(sessionID: sessionID)
         }
 
@@ -172,6 +207,7 @@ final class MeetingCaptureEngine {
         guard isRecording, !isPaused else { return }
         pausedAtHostTime = mach_absolute_time()
         isPaused = true
+        microphoneLiveness?.setPaused(true)
         microphoneSink.pause()
         callSink.pause()
     }
@@ -182,9 +218,11 @@ final class MeetingCaptureEngine {
         let gap = now > pausedAtHostTime ? now - pausedAtHostTime : 0
         microphoneWriter?.skipPausedTime(ticks: gap)
         callWriter?.skipPausedTime(ticks: gap)
+        microphoneGaps.addPausedTicks(gap)
         microphoneSink.resume(at: now)
         callSink.resume(at: now)
         isPaused = false
+        microphoneLiveness?.setPaused(false)
     }
 
     func stop() async -> MeetingCaptureResult {
@@ -201,14 +239,25 @@ final class MeetingCaptureEngine {
         microphonePermissionRequestedSession = nil
         watchdogTask?.cancel()
         watchdogTask = nil
+        microphoneRecoveryTask?.cancel()
+        microphoneRecoveryTask = nil
+        microphoneLiveness?.stop()
+        microphoneLiveness = nil
         removeSystemSleepObservers()
         systemTap?.stop()
-        microphone?.stop()
+        // Waits at most two seconds for the live capture. Abandoned captures are never waited on.
+        if let microphone, !microphone.stop() { abandonedMicrophones.append(microphone) }
+        microphoneRelay?.close()
+        microphoneRelay = nil
         callWriter?.finish()
         microphoneWriter?.finish()
 
         if let problem = systemTap?.problem { warnings.append(problem) }
         if let problem = microphone?.problem { warnings.append(problem) }
+        for gap in microphoneGaps.gaps {
+            warnings.append(
+                "Your microphone was not recording from \(MeetingMicrophoneGapLog.clockText(gap.start)) to \(MeetingMicrophoneGapLog.clockText(gap.end)).")
+        }
         if let microphoneProblem, microphoneProblem.hasPrefix("The microphone is sending silence") {
             warnings.append(microphoneProblem)
         }
@@ -268,34 +317,9 @@ final class MeetingCaptureEngine {
         case .authorized:
             microphonePermissionRetryTask?.cancel()
             microphonePermissionRetryTask = nil
-            let micSink = microphoneSink
-            let micCapture = MeetingMicrophoneCapture(
-                handler: { samples, rate, hostTime in
-                    micSink.enqueue(samples, sampleRate: rate, hostTime: hostTime)
-                },
-                onProblem: { [weak self] message in
-                    Task { @MainActor [weak self] in
-                        guard let self, self.isCurrentSession(sessionID) else { return }
-                        if message != nil, Date() < self.watchdogGraceUntil { return }
-                        self.setProblem(message, for: .microphone)
-                    }
-                },
-                onDeviceNotice: { [weak self] message in
-                    Task { @MainActor [weak self] in
-                        guard let self, self.isCurrentSession(sessionID) else { return }
-                        self.onDeviceNotice?(message)
-                    }
-                },
-                onRestart: { [weak self] in
-                    Task { @MainActor [weak self] in
-                        guard let self, self.isCurrentSession(sessionID) else { return }
-                        micSink.resetWatchdogTimers()
-                        self.sleepWatchdogGraceStartedAt = Date()
-                        self.sleepWatchdogGracePending = true
-                        self.watchdogGraceUntil = Date().addingTimeInterval(5)
-                    }
-                })
+            let micCapture = makeMicrophoneCapture(sessionID: sessionID, isReplacement: false)
             microphone = micCapture
+            microphoneLiveness?.watch(micCapture)
             micCapture.start(
                 preferredDeviceID: microphoneDeviceID,
                 preferredDeviceUID: microphoneDeviceUID,
@@ -319,6 +343,129 @@ final class MeetingCaptureEngine {
             showMicrophonePermissionProblem()
             scheduleMicrophonePermissionRetry(sessionID: sessionID)
         }
+    }
+
+    /// A microphone capture with its callbacks. Every callback ignores itself once a newer capture exists, and its frames
+    /// go through a relay that is closed when the capture is abandoned, so a stuck capture cannot disturb its replacement.
+    private func makeMicrophoneCapture(sessionID: UInt64, isReplacement: Bool) -> MeetingMicrophoneCapture {
+        microphoneGeneration &+= 1
+        let generation = microphoneGeneration
+        let micSink = microphoneSink
+        microphoneRelay?.close()
+        let relay = MeetingMicrophoneRelay(
+            sink: micSink, gaps: microphoneGaps, patchesMissingHostTime: isReplacement,
+            onFirstFrame: { [weak self] in
+                Task { @MainActor [weak self] in
+                    guard let self, self.isCurrentSession(sessionID), self.microphoneGeneration == generation else { return }
+                    self.microphoneFailures = 0
+                    if isReplacement {
+                        self.logger.notice("Meeting microphone is recording again on a fresh capture")
+                    }
+                }
+            })
+        microphoneRelay = relay
+        return MeetingMicrophoneCapture(
+            handler: { samples, rate, hostTime in
+                relay.deliver(samples, sampleRate: rate, hostTime: hostTime)
+            },
+            onProblem: { [weak self] message in
+                Task { @MainActor [weak self] in
+                    guard let self, self.isCurrentSession(sessionID), self.microphoneGeneration == generation else { return }
+                    // A replacement that finds no working input counts as one more failure, once.
+                    if message != nil, isReplacement, self.countedFailureGeneration != generation {
+                        self.countedFailureGeneration = generation
+                        self.noteMicrophoneFailure()
+                    }
+                    if message != nil, Date() < self.watchdogGraceUntil { return }
+                    self.setProblem(message, for: .microphone)
+                }
+            },
+            onDeviceNotice: { [weak self] message in
+                Task { @MainActor [weak self] in
+                    guard let self, self.isCurrentSession(sessionID), self.microphoneGeneration == generation else { return }
+                    self.onDeviceNotice?(message)
+                }
+            },
+            onRestart: { [weak self] in
+                Task { @MainActor [weak self] in
+                    guard let self, self.isCurrentSession(sessionID), self.microphoneGeneration == generation else { return }
+                    micSink.resetWatchdogTimers()
+                    self.sleepWatchdogGraceStartedAt = Date()
+                    self.sleepWatchdogGracePending = true
+                    self.watchdogGraceUntil = Date().addingTimeInterval(5)
+                }
+            },
+            onExtendGrace: { [weak self] seconds in
+                Task { @MainActor [weak self] in
+                    guard let self, self.isCurrentSession(sessionID), self.microphoneGeneration == generation else { return }
+                    self.watchdogGraceUntil = max(self.watchdogGraceUntil, Date().addingTimeInterval(seconds))
+                }
+            },
+            onNeedsHand: { [weak self] message in
+                Task { @MainActor [weak self] in
+                    guard let self, self.isCurrentSession(sessionID), self.microphoneGeneration == generation else { return }
+                    NotificationManager.shared.showNotification(title: message, type: .error, duration: 20)
+                }
+            })
+    }
+
+    /// The microphone capture's queue stopped answering. It is abandoned without being touched again, and a fresh capture
+    /// with its own queue and engine takes over, writing into the same mic track.
+    private func microphoneWedged(_ wedged: MeetingMicrophoneCapture, sessionID: UInt64) {
+        guard isCurrentSession(sessionID), microphone === wedged else { return }
+        logger.error("Meeting microphone queue wedged; starting a fresh capture")
+        microphoneRelay?.close()
+        microphoneRelay = nil
+        wedged.abandon()
+        abandonedMicrophones.append(wedged)
+        microphone = nil
+        noteMicrophoneFailure()
+        scheduleFreshMicrophone(sessionID: sessionID)
+    }
+
+    /// Starts the replacement now, or when ten seconds have passed since the last one was started. Only one is ever
+    /// alive: the one it replaces was abandoned first.
+    private func scheduleFreshMicrophone(sessionID: UInt64) {
+        microphoneRecoveryTask?.cancel()
+        let wait = max(0, nextMicrophoneAttemptAt.timeIntervalSinceNow)
+        guard wait > 0 else {
+            microphoneRecoveryTask = nil
+            startFreshMicrophone(sessionID: sessionID)
+            return
+        }
+        microphoneRecoveryTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(wait * 1_000_000_000))
+            guard !Task.isCancelled, let self else { return }
+            self.microphoneRecoveryTask = nil
+            self.startFreshMicrophone(sessionID: sessionID)
+        }
+    }
+
+    private func startFreshMicrophone(sessionID: UInt64) {
+        guard isCurrentSession(sessionID), microphone == nil else { return }
+        nextMicrophoneAttemptAt = Date().addingTimeInterval(Self.freshMicrophoneRetryInterval)
+        let capture = makeMicrophoneCapture(sessionID: sessionID, isReplacement: true)
+        microphone = capture
+        watchdogGraceUntil = max(watchdogGraceUntil, Date().addingTimeInterval(8))
+        microphoneLiveness?.watch(capture)
+        // The capture logs the input it ends up on ("Meeting microphone started on ..."). The start never blocks this thread.
+        capture.startWithoutWaiting(
+            preferredDeviceID: microphoneDeviceID,
+            preferredDeviceUID: microphoneDeviceUID,
+            followsSystemDefaultInput: followsSystemDefaultInput
+        )
+    }
+
+    /// The first failure is the stuck capture itself; a replacement that fails or sticks as well is the second. From then
+    /// on the user is told once that their side of the meeting may be missing. Audio that flows again resets the count.
+    private func noteMicrophoneFailure() {
+        microphoneFailures += 1
+        guard microphoneFailures >= 2, !didWarnAboutMicrophone else { return }
+        didWarnAboutMicrophone = true
+        NotificationManager.shared.showNotification(
+            title: "The microphone stopped working in this meeting and Voicer could not get it going again yet. It keeps trying; your side may be missing meanwhile. Replug it or run fixmic.",
+            type: .error,
+            duration: 20)
     }
 
     private func showMicrophonePermissionProblem() {
@@ -457,6 +604,7 @@ final class MeetingCaptureEngine {
                 guard let self else { return }
                 self.microphoneSink.resetWatchdogTimers()
                 self.callSink.resetWatchdogTimers()
+                self.microphoneLiveness?.extendGrace(30)
                 let sleepStartedAt = Date()
                 self.sleepWatchdogGraceStartedAt = sleepStartedAt
                 self.watchdogGraceUntil = sleepStartedAt.addingTimeInterval(30)
@@ -470,6 +618,7 @@ final class MeetingCaptureEngine {
                 guard let self else { return }
                 self.microphoneSink.resetWatchdogTimers()
                 self.callSink.resetWatchdogTimers()
+                self.microphoneLiveness?.extendGrace(15)
                 let wakeStartedAt = Date()
                 self.sleepWatchdogGraceStartedAt = wakeStartedAt
                 self.watchdogGraceUntil = wakeStartedAt.addingTimeInterval(5)

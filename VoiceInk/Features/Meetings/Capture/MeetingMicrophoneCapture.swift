@@ -17,6 +17,8 @@ final class MeetingMicrophoneCapture: @unchecked Sendable {
     private let onProblem: @Sendable (String?) -> Void
     private let onDeviceNotice: @Sendable (String?) -> Void
     private let onRestart: @Sendable () -> Void
+    private let onExtendGrace: @Sendable (TimeInterval) -> Void
+    private let onNeedsHand: @Sendable (String) -> Void
     private var preferredDeviceID: AudioDeviceID?
     private var preferredDeviceUID: String?
     private var followsSystemDefaultInput = false
@@ -26,7 +28,17 @@ final class MeetingMicrophoneCapture: @unchecked Sendable {
     private var ordinaryInputDeviceIDs: Set<AudioDeviceID> = []
     private var currentDeviceID: AudioDeviceID?
     private var currentDeviceIndex = -1
-    private var restartProblem: String?
+    private var restartProblem: String? {
+        didSet {
+            stateLock.lock()
+            publishedProblem = restartProblem
+            stateLock.unlock()
+        }
+    }
+    // Set from outside the capture queue, so it never needs the queue (which may be stuck inside AVAudioEngine).
+    private let stateLock = NSLock()
+    private var publishedProblem: String?
+    private var isAbandoned = false
     private var configurationObserver: NSObjectProtocol?
     private var deviceListener: AudioObjectPropertyListenerBlock?
     private var defaultInputListener: AudioObjectPropertyListenerBlock?
@@ -38,7 +50,17 @@ final class MeetingMicrophoneCapture: @unchecked Sendable {
     private var preferredProbeGeneration: UInt64 = 0
     private var promotedProbeGeneration: UInt64?
     private var nextPreferredProbeAt = Date.distantPast
-    private var active = false
+    private var storedActive = false
+    /// An abandoned capture is never active again, whatever its queue gets round to running later.
+    private var active: Bool {
+        get { storedActive && !abandoned }
+        set { storedActive = newValue }
+    }
+    private var abandoned: Bool {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        return isAbandoned
+    }
     private var generation: UInt64 = 0
     private var lastFramesAt = Date()
     private var watchdogGraceUntil = Date.distantPast
@@ -47,20 +69,35 @@ final class MeetingMicrophoneCapture: @unchecked Sendable {
     private var lastObservedDefaultInputID: AudioDeviceID?
     private var retryAt: Date?
     private var recentErrors: [String] = []
+    private var didRepairAudio = false
+    private var formatRetries = 0
+    private var formatRetryToken: UInt64 = 0
+    private var didAskForHelp = false
+    // How long the chosen input gets to deliver its first audio before the next one is tried.
+    private let chosenInputGrace: TimeInterval = 8
 
     init(
         handler: @escaping Handler,
         onProblem: @escaping @Sendable (String?) -> Void = { _ in },
         onDeviceNotice: @escaping @Sendable (String?) -> Void = { _ in },
-        onRestart: @escaping @Sendable () -> Void = {}
+        onRestart: @escaping @Sendable () -> Void = {},
+        onExtendGrace: @escaping @Sendable (TimeInterval) -> Void = { _ in },
+        onNeedsHand: @escaping @Sendable (String) -> Void = { _ in }
     ) {
         self.handler = handler
         self.onProblem = onProblem
         self.onDeviceNotice = onDeviceNotice
         self.onRestart = onRestart
+        self.onExtendGrace = onExtendGrace
+        self.onNeedsHand = onNeedsHand
     }
 
-    var problem: String? { queue.sync { restartProblem } }
+    /// Read without the capture queue: it is asked for when a meeting ends, and that queue may be stuck.
+    var problem: String? {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        return publishedProblem
+    }
 
     func start(
         preferredDeviceID: AudioDeviceID?,
@@ -68,23 +105,81 @@ final class MeetingMicrophoneCapture: @unchecked Sendable {
         followsSystemDefaultInput: Bool = false
     ) {
         queue.sync {
-            guard !active else { return }
-            active = true
-            self.preferredDeviceID = preferredDeviceID
-            self.followsSystemDefaultInput = followsSystemDefaultInput
-            self.preferredDeviceUID = followsSystemDefaultInput
-                ? nil
-                : preferredDeviceUID ?? preferredDeviceID.flatMap { deviceUID($0) }
-            lastObservedDefaultInputID = systemDefaultInput()
-            refreshOrderedDevices()
-            installDeviceListeners()
-            tryNextDevice(startingAt: 0)
-            startWatchdog()
+            begin(
+                preferredDeviceID: preferredDeviceID, preferredDeviceUID: preferredDeviceUID,
+                followsSystemDefaultInput: followsSystemDefaultInput)
         }
     }
 
-    func stop() {
-        queue.sync {
+    /// Starts on the capture's own queue and returns at once. A replacement for a stuck capture starts this way, so a
+    /// start that also gets stuck inside AVAudioEngine can never hold up the caller.
+    func startWithoutWaiting(
+        preferredDeviceID: AudioDeviceID?,
+        preferredDeviceUID: String? = nil,
+        followsSystemDefaultInput: Bool = false
+    ) {
+        queue.async { [self] in
+            begin(
+                preferredDeviceID: preferredDeviceID, preferredDeviceUID: preferredDeviceUID,
+                followsSystemDefaultInput: followsSystemDefaultInput)
+        }
+    }
+
+    private func begin(
+        preferredDeviceID: AudioDeviceID?,
+        preferredDeviceUID: String?,
+        followsSystemDefaultInput: Bool
+    ) {
+        guard !active else { return }
+        active = true
+        didRepairAudio = false
+        formatRetries = 0
+        didAskForHelp = false
+        self.preferredDeviceID = preferredDeviceID
+        self.followsSystemDefaultInput = followsSystemDefaultInput
+        self.preferredDeviceUID = followsSystemDefaultInput
+            ? nil
+            : preferredDeviceUID ?? preferredDeviceID.flatMap { deviceUID($0) }
+        lastObservedDefaultInputID = systemDefaultInput()
+        refreshOrderedDevices()
+        installDeviceListeners()
+        tryNextDevice(startingAt: 0)
+        startWatchdog()
+    }
+
+    /// Posts an empty block to the capture queue. `answered` runs on that queue when the block is reached, so a queue
+    /// that is stuck never calls it. This never waits.
+    func ping(_ answered: @escaping @Sendable () -> Void) {
+        queue.async(execute: answered)
+    }
+
+    /// Gives up on this capture without touching it: nothing it delivers is used again, its callbacks go quiet, and
+    /// nothing waits for its queue. If the queue ever gets going again, the clean-up posted here runs and the engine
+    /// is stopped. The owner keeps a reference for good, because releasing an AVAudioEngine whose queue is stuck inside
+    /// it could block whoever drops the last reference.
+    func abandon() {
+        stateLock.lock()
+        isAbandoned = true
+        stateLock.unlock()
+        queue.async { [self] in
+            storedActive = false
+            watchdog?.cancel()
+            watchdog = nil
+            removeDeviceListeners()
+            removeConfigurationObserver()
+            stopPreferredProbe()
+            stop(engine)
+            generation &+= 1
+            currentDeviceID = nil
+        }
+    }
+
+    /// Returns false when the capture queue did not finish stopping within two seconds (it is stuck).
+    @discardableResult
+    func stop() -> Bool {
+        let finished = DispatchSemaphore(value: 0)
+        queue.async { [self] in
+            defer { finished.signal() }
             guard active else { return }
             active = false
             watchdog?.cancel()
@@ -99,6 +194,13 @@ final class MeetingMicrophoneCapture: @unchecked Sendable {
             generation &+= 1
             currentDeviceID = nil
         }
+        // The capture queue can wedge inside AVAudioEngine (seen on 13 Nov, when it froze the whole app with the meeting
+        // unsaved), so the caller never waits on it for long.
+        if finished.wait(timeout: .now() + 2) == .timedOut {
+            logger.error("Meeting microphone queue did not stop in time; carrying on without it")
+            return false
+        }
+        return true
     }
 
     private func installTapAndStart(
@@ -147,6 +249,8 @@ final class MeetingMicrophoneCapture: @unchecked Sendable {
         sampleRate: Double,
         hostTime: UInt64
     ) {
+        // After a capture is abandoned its queue may never run again; queueing more audio behind it would only pile up.
+        guard !abandoned else { return }
         queue.async { [weak self] in
             guard let self, self.active, self.generation == callbackGeneration else { return }
             self.acceptFrames(samples, sampleRate: sampleRate, hostTime: hostTime)
@@ -160,6 +264,7 @@ final class MeetingMicrophoneCapture: @unchecked Sendable {
         sampleRate: Double,
         hostTime: UInt64
     ) {
+        guard !abandoned else { return }
         queue.async { [weak self] in
             guard let self, self.active else { return }
             if self.preferredProbeGeneration == callbackGeneration,
@@ -238,13 +343,29 @@ final class MeetingMicrophoneCapture: @unchecked Sendable {
             onRestart()
             onDeviceNotice(nil)
             logger.notice("Meeting microphone restarted on the same device after a format change")
-            startPreferredProbeIfNeeded(force: true)
+            // Forcing the probe here made every restart start another engine, which caused the next restart.
+            startPreferredProbeIfNeeded(force: false)
+            formatRetries = 0
         } catch {
             recentErrors.append("\(deviceName(deviceID)): \(error.localizedDescription)")
             logger.error("Meeting microphone could not restart after a format change: \(error.localizedDescription, privacy: .public)")
             stop(engine)
             currentDeviceID = nil
             currentDeviceIndex = -1
+            // A format mismatch right after a change is usually gone a moment later, so the same input gets a few more
+            // tries before another one is used.
+            if formatRetries < 3 {
+                formatRetries += 1
+                formatRetryToken &+= 1
+                let token = formatRetryToken
+                watchdogGraceUntil = Date().addingTimeInterval(3)
+                queue.asyncAfter(deadline: .now() + 0.7) { [weak self] in
+                    guard let self, self.active, self.formatRetryToken == token, self.currentDeviceID == nil else { return }
+                    self.restartCurrentDevice(deviceID)
+                }
+                return
+            }
+            formatRetries = 0
             tryNextDevice(startingAt: 0, skippingDeviceID: deviceID)
         }
     }
@@ -302,7 +423,12 @@ final class MeetingMicrophoneCapture: @unchecked Sendable {
                 && !["virtual", "blackhole", "loopback", "aggregate"].contains { name.contains($0) }
         }
         ordinaryInputDeviceIDs = Set(ordinaryDevices)
-        let candidates = ordinaryDevices.isEmpty ? inputDevices : ordinaryDevices
+        var candidates = ordinaryDevices.isEmpty ? inputDevices : ordinaryDevices
+        // With the lid shut the built-in microphone is dead, so trying it only costs seconds of lost audio.
+        if CoreAudioRepair.isLidClosed {
+            let external = candidates.filter { !isBuiltInMicrophone($0) }
+            if !external.isEmpty { candidates = external }
+        }
         eligibleInputDeviceIDs = Set(candidates)
         resolvedPreferredDeviceID = preferredDeviceUID.flatMap { uid in
             inputDevices.first(where: { deviceUID($0) == uid })
@@ -322,7 +448,11 @@ final class MeetingMicrophoneCapture: @unchecked Sendable {
         } else if preferredDeviceUID == nil, let preferredDeviceID, candidates.contains(preferredDeviceID) {
             append(preferredDeviceID)
         }
-        if !followsSystemDefaultInput, let defaultID, candidates.contains(defaultID) { append(defaultID) }
+        // A Bluetooth headset that became the default mid-call is not what was asked for: its microphone changes format
+        // every few seconds and often sends silence, so it comes after the built-in one.
+        if !followsSystemDefaultInput, let defaultID, candidates.contains(defaultID), !isBluetooth(defaultID) {
+            append(defaultID)
+        }
         append(candidates.first(where: isBuiltInMicrophone))
         candidates.forEach { append($0) }
         if ordered.isEmpty { inputDevices.forEach { append($0) } }
@@ -380,13 +510,15 @@ final class MeetingMicrophoneCapture: @unchecked Sendable {
                 currentDeviceID = deviceID
                 currentDeviceIndex = nextIndex
                 lastFramesAt = Date()
-                watchdogGraceUntil = Date().addingTimeInterval(5)
+                let isChosenInput = nextIndex == 0
+                watchdogGraceUntil = Date().addingTimeInterval(isChosenInput ? chosenInputGrace : 5)
                 quietPeriodNeedsFrameGrace = true
                 let requestedFirst = followsSystemDefaultInput
                     ? systemDefaultInput()
                     : resolvedPreferredDeviceID ?? preferredDeviceID ?? systemDefaultInput()
                 let notice = deviceID == requestedFirst ? nil : "Using \(deviceName(deviceID))"
                 onRestart()
+                if isChosenInput { onExtendGrace(chosenInputGrace) }
                 onDeviceNotice(notice)
                 observeConfigurationChanges()
                 logger.notice("Meeting microphone started on \(self.deviceName(deviceID), privacy: .public)")
@@ -426,6 +558,9 @@ final class MeetingMicrophoneCapture: @unchecked Sendable {
             self.startPreferredProbeIfNeeded(force: false)
             if self.currentDeviceID != nil {
                 guard now.timeIntervalSince(self.lastFramesAt) >= 4 else { return }
+                let isChosen = self.currentDeviceID != nil && self.currentDeviceID == self.resolvedPreferredDeviceID
+                if isChosen, self.currentDeviceIndex == 0, self.repairChosenInput() { return }
+                if isChosen, self.currentDeviceIndex == 0 { self.askForHelp() }
                 if self.currentDeviceIndex + 1 < self.orderedDeviceIDs.count {
                     self.logger.error("Meeting microphone delivered no frames; trying the next input")
                     self.tryNextDevice(startingAt: self.currentDeviceIndex + 1)
@@ -437,14 +572,51 @@ final class MeetingMicrophoneCapture: @unchecked Sendable {
                     self.recentErrors = []
                     self.reportExhaustedDevices()
                 }
-            } else if let retryAt = self.retryAt, now >= retryAt {
-                self.refreshOrderedDevices()
-                self.recentErrors = []
-                self.tryNextDevice(startingAt: 0)
+            } else if let retryAt = self.retryAt {
+                if now >= retryAt {
+                    self.refreshOrderedDevices()
+                    self.recentErrors = []
+                    self.tryNextDevice(startingAt: 0)
+                }
+            } else {
+                // No input running and no retry planned: never leave it there. A meeting keeps trying every 10 seconds.
+                self.retryAt = now.addingTimeInterval(10)
             }
         }
         watchdog = timer
         timer.resume()
+    }
+
+    /// The chosen microphone is there but silent. Restart the macOS audio service once, as `fixmic` does, and give
+    /// the chosen input another go. Returns true when a restart was started, so the caller leaves the input alone.
+    private func repairChosenInput() -> Bool {
+        guard !didRepairAudio else { return false }
+        didRepairAudio = true
+        let name = currentDeviceID.map { deviceName($0) } ?? "microphone"
+        logger.error("Meeting microphone \(name, privacy: .public) is silent; restarting the audio service")
+        guard CoreAudioRepair.restartCoreAudio() else {
+            logger.error("Audio service restart was refused; the fixmic rule is not installed")
+            return false
+        }
+        generation &+= 1
+        stop(engine)
+        currentDeviceID = nil
+        currentDeviceIndex = -1
+        recentErrors = []
+        let wait: TimeInterval = 3
+        watchdogGraceUntil = Date().addingTimeInterval(wait)
+        retryAt = Date().addingTimeInterval(wait)
+        onExtendGrace(wait + chosenInputGrace + 2)
+        return true
+    }
+
+    /// Tells the user once that the chosen microphone stayed silent even after the automatic restart.
+    private func askForHelp() {
+        guard !didAskForHelp else { return }
+        didAskForHelp = true
+        let name = currentDeviceID.map { deviceName($0) } ?? "The microphone"
+        let tried = didRepairAudio ? "Voicer already restarted the audio service." : "The automatic fix is not set up."
+        onNeedsHand("\(name) is silent in this meeting. \(tried) Replug it or run fixmic.")
     }
 
     private func installDeviceListeners() {
@@ -733,6 +905,11 @@ final class MeetingMicrophoneCapture: @unchecked Sendable {
         var size = UInt32(MemoryLayout<UInt32>.size)
         guard AudioObjectGetPropertyData(deviceID, &address, 0, nil, &size, &value) == noErr else { return 0 }
         return value
+    }
+
+    private func isBluetooth(_ deviceID: AudioDeviceID) -> Bool {
+        let transport = transportType(deviceID)
+        return transport == kAudioDeviceTransportTypeBluetooth || transport == kAudioDeviceTransportTypeBluetoothLE
     }
 
     private func isBuiltInMicrophone(_ deviceID: AudioDeviceID) -> Bool {
