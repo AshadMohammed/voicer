@@ -106,7 +106,7 @@ final class MeetingIndicatorController {
         if MeetingsCoordinator.shared.isAutoPausedForSilence { return NSSize(width: 252, height: 116) }
         if model.endDeadline != nil { return NSSize(width: 214, height: 96) }
         if MeetingsCoordinator.shared.captureProblem != nil || MeetingsCoordinator.shared.captureDeviceNotice != nil {
-            return NSSize(width: 230, height: model.isHovering ? 224 : 112)
+            return NSSize(width: 230, height: model.isHovering ? 160 : 118)
         }
         if model.isCollapsed { return NSSize(width: 20, height: 56) }
         return model.isHovering ? NSSize(width: 48, height: 182) : NSSize(width: 48, height: 66)
@@ -176,6 +176,11 @@ struct MeetingIndicatorView: View {
         coordinator.captureProblem ?? coordinator.captureDeviceNotice
     }
 
+    /// Fully rounded while narrow, a rounded card once a status line widens it, since a capsule that wide and tall is a circle.
+    private var pillShape: RoundedRectangle {
+        RoundedRectangle(cornerRadius: statusMessage == nil ? 24 : 20, style: .continuous)
+    }
+
     private var pill: some View {
         VStack(spacing: 8) {
             VStack(spacing: 6) {
@@ -203,18 +208,12 @@ struct MeetingIndicatorView: View {
             }
 
             if model.isHovering {
-                VStack(spacing: 8) {
-                    PillButton(
-                        symbol: coordinator.isPaused ? "play.fill" : "pause.fill",
-                        help: coordinator.isPaused ? "Resume recording" : "Pause recording"
-                    ) { coordinator.togglePause() }
-                    PillButton(symbol: "stop.fill", help: "Stop recording the meeting", filled: true) {
-                        coordinator.stopRecording()
-                    }
-                    .disabled(!coordinator.isRecording)
-                    PillButton(symbol: "chevron.right", help: "Hide the pill. Recording carries on.") {
-                        model.isCollapsed = true
-                        model.isHovering = false
+                // Beside each other when the pill is wide, so it does not grow into a tall circle.
+                Group {
+                    if statusMessage == nil {
+                        VStack(spacing: 8) { pillControls }
+                    } else {
+                        HStack(spacing: 12) { pillControls }
                     }
                 }
                 .transition(.opacity)
@@ -224,10 +223,25 @@ struct MeetingIndicatorView: View {
         .padding(.vertical, 8)
         .frame(width: statusMessage == nil ? 48 : 230)
         .frame(maxHeight: .infinity, alignment: .top)
-        .background(Capsule().fill(AppTheme.Palette.card))
-        .overlay(Capsule().strokeBorder(AppTheme.Palette.lineStrong, lineWidth: 1))
+        .background(pillShape.fill(AppTheme.Palette.card))
+        .overlay(pillShape.strokeBorder(AppTheme.Palette.lineStrong, lineWidth: 1))
         .shadow(color: AppTheme.Palette.ink.opacity(0.18), radius: 8, y: 3)
         .padding(.vertical, 12)
+    }
+
+    @ViewBuilder private var pillControls: some View {
+        PillButton(
+            symbol: coordinator.isPaused ? "play.fill" : "pause.fill",
+            help: coordinator.isPaused ? "Resume recording" : "Pause recording"
+        ) { coordinator.togglePause() }
+        PillButton(symbol: "stop.fill", help: "Stop recording the meeting", filled: true) {
+            coordinator.stopRecording()
+        }
+        .disabled(!coordinator.isRecording)
+        PillButton(symbol: "chevron.right", help: "Hide the pill. Recording carries on.") {
+            model.isCollapsed = true
+            model.isHovering = false
+        }
     }
 
     /// The pill folded away: a small tab at the edge. A click brings the pill back.
