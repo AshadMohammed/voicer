@@ -6,7 +6,7 @@ struct CallDetectionPolicy {
 
     enum Prompt: Equatable {
         case start(CallSource, displayName: String)   // "<displayName> is on a call. Record it?"
-        case end                                       // "Call ended, saving in 10s" with Keep recording
+        case end                                       // "Call ended, saving in 4s" with Keep recording
     }
 
     enum Action: Equatable {
@@ -21,7 +21,7 @@ struct CallDetectionPolicy {
     /// How long the call's sources must be gone from the mic before the call counts as ended.
     var endDelay: TimeInterval = 5
     /// How long the "call ended" notice stays up before the recording is stopped and saved.
-    var endCountdown: TimeInterval = 10
+    var endCountdown: TimeInterval = 4
     var promptTimeout: TimeInterval = 60
     var browserCheckInterval: TimeInterval = 3
     var browserCheckWindow: TimeInterval = 15

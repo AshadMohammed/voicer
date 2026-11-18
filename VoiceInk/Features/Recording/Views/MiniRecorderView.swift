@@ -11,6 +11,7 @@ struct MiniRecorderView<S: RecorderStateProvider & ObservableObject>: View {
     @ObservedObject private var handsFreeLock = HandsFreeLockIndicator.shared
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var lockBump = false
+    @State private var isShrunk = false
 
     // MARK: - Layout Constants
 
@@ -20,6 +21,9 @@ struct MiniRecorderView<S: RecorderStateProvider & ObservableObject>: View {
     private let assistantWidth: CGFloat = 520
     private let compactCornerRadius: CGFloat = 20
     private let expandedCornerRadius: CGFloat = 14
+    // The pill settles to this size once a recording has run for `shrinkDelay` seconds.
+    private let shrunkScale: CGFloat = 0.7
+    private let shrinkDelay: Double = 2
 
     // true when live transcript is streaming in during recording
     private var hasLiveTranscript: Bool {
@@ -45,6 +49,10 @@ struct MiniRecorderView<S: RecorderStateProvider & ObservableObject>: View {
 
     private var cornerRadius: CGFloat {
         hasLiveTranscript || hasAssistantResponse ? expandedCornerRadius : compactCornerRadius
+    }
+
+    private var shrinkScale: CGFloat {
+        isShrunk && usesLightSurface ? shrunkScale : 1
     }
 
     private var shouldShowCloseButton: Bool {
@@ -120,8 +128,15 @@ struct MiniRecorderView<S: RecorderStateProvider & ObservableObject>: View {
         )
         .shadow(color: AppTheme.Palette.ink.opacity(usesLightSurface && !isLockedGlowing ? 0.18 : 0), radius: 8, y: 3)
         .shadow(color: AppTheme.Palette.recording.opacity(isLockedGlowing ? 0.8 : 0), radius: 12)
-        .scaleEffect(lockBump ? 1.06 : 1, anchor: .bottom)
+        .scaleEffect(shrinkScale * (lockBump ? 1.06 : 1), anchor: .bottom)
         .animation(.easeOut(duration: 0.18), value: isLockedGlowing)
+        .task(id: stateProvider.recordingState) {
+            isShrunk = false
+            guard stateProvider.recordingState == .recording else { return }
+            try? await Task.sleep(for: .seconds(shrinkDelay))
+            guard !Task.isCancelled else { return }
+            withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.35)) { isShrunk = true }
+        }
         .onChange(of: isLockedGlowing) { _, locked in
             guard locked, !reduceMotion else { return }
             withAnimation(.spring(response: 0.18, dampingFraction: 0.6)) { lockBump = true }
