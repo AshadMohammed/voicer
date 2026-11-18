@@ -70,6 +70,17 @@ enum MeetingProcessor {
             if callURL == nil {
                 notes.append("Call audio was not recorded, so only microphone audio is transcribed.")
             }
+            // A microphone that stopped partway leaves a short track. Both tracks start together and are padded with
+            // silence for any gap in the middle, so a shorter microphone track means it stopped for good.
+            if microphoneURL != nil, callURL != nil, !MeetingAudioAnalyzer.isSilent(micSamples) {
+                let micSeconds = Double(micSamples.count) / MeetingAudioAnalyzer.sampleRate
+                let callSeconds = Double(callSamples.count) / MeetingAudioAnalyzer.sampleRate
+                if callSeconds - micSeconds > 60 {
+                    notes.append(
+                        "Your microphone stopped recording at \(MeetingMicrophoneGapLog.clockText(micSeconds)), so your side of the conversation after that is missing."
+                    )
+                }
+            }
 
             if MeetingAudioAnalyzer.isSilent(callSamples) {
                 // Nothing came through the call audio: an in-person meeting, or system audio wasn't allowed.
