@@ -2,7 +2,7 @@ import FluidAudio
 import Foundation
 import os
 
-/// Turns meeting audio into timed words (Parakeet) and speaker turns (FluidAudio's offline diarizer), on this Mac.
+/// Turns meeting audio into timed words (Nemotron Multilingual) and speaker turns (FluidAudio's offline diarizer), on this Mac.
 /// Keeps its own models so a meeting being processed never fights with live dictation for the same model.
 final class MeetingAudioAnalyzer {
     enum AnalyzerError: LocalizedError {
@@ -11,28 +11,24 @@ final class MeetingAudioAnalyzer {
         var errorDescription: String? {
             switch self {
             case .speechModelMissing:
-                return "No Parakeet model is downloaded. Download Parakeet Ultra in Settings, then try again."
+                return "No Nemotron model is downloaded. Download Nemotron Multilingual in Settings, then try again."
             }
         }
     }
 
     static let sampleRate: Double = 16_000
 
-    private let asrVersion: AsrModelVersion
+    /// The Nemotron model meetings are transcribed with (the same model dictation uses, loaded separately).
+    static let speechModelName = "nemotron-multilingual-0.6b"
+
     private let converter = AudioConverter()
-    private var asrManager: AsrManager?
+    private var speechTranscriber: MeetingNemotronTranscriber?
     private var diarizer: OfflineDiarizerManager?
     private let logger = Logger(subsystem: "com.ashadmohammed.voicer", category: "MeetingAudioAnalyzer")
 
-    init(asrVersion: AsrModelVersion) {
-        self.asrVersion = asrVersion
-    }
-
-    /// The Parakeet versions that give word timings, best first, that are already downloaded.
-    static func downloadedSpeechModels() -> [AsrModelVersion] {
-        [.ultra, .v3, .v2].filter {
-            AsrModels.modelsExist(at: AsrModels.defaultCacheDirectory(for: $0), version: $0)
-        }
+    /// True when Nemotron Multilingual is already downloaded.
+    static func isSpeechModelDownloaded() -> Bool {
+        FluidAudioModelManager.isNemotronModelDownloaded(named: speechModelName)
     }
 
     /// Any audio or video file, as 16 kHz mono samples.
@@ -61,21 +57,14 @@ final class MeetingAudioAnalyzer {
 
     func words(in samples: [Float]) async throws -> [MeetingWord] {
         guard !samples.isEmpty else { return [] }
-        let manager = try await loadedSpeechModel()
-        var decoderState = TdtDecoderState.make(decoderLayers: await manager.decoderLayerCount)
-        let result = try await manager.transcribe(samples, decoderState: &decoderState, language: nil)
-
-        guard let tokenTimings = result.tokenTimings, !tokenTimings.isEmpty else {
-            let text = result.text.trimmingCharacters(in: .whitespacesAndNewlines)
-            let duration = Double(samples.count) / Self.sampleRate
-            return text.isEmpty ? [] : [MeetingWord(text: text, start: 0, end: duration)]
-        }
-
-        // The last word before a silence is timed as running until the next word, so a word is capped
-        // at a second; otherwise pauses vanish and that word drags speaker labels across the gap.
-        return buildWordTimings(from: tokenTimings).map {
-            MeetingWord(text: $0.word, start: $0.startTime, end: min($0.endTime, $0.startTime + 1.0))
-        }
+        let transcriber = try loadedSpeechTranscriber()
+        let result = try await transcriber.words(in: samples)
+        let stats = result.stats
+        // Counts and timings only; the transcript itself is never logged.
+        logger.notice(
+            "Nemotron meeting track: \(stats.pieces) pieces, \(Int(stats.audioSeconds.rounded())) s of audio, \(Int(stats.processingSeconds.rounded())) s to process, \(stats.words) words, \(stats.droppedStockPieces) stock-phrase pieces dropped"
+        )
+        return result.words
     }
 
     /// Who spoke when. The diarizer's models download once (a few tens of MB) the first time it runs.
@@ -100,27 +89,20 @@ final class MeetingAudioAnalyzer {
     }
 
     func release() async {
-        await asrManager?.cleanup()
-        asrManager = nil
+        await speechTranscriber?.release()
+        speechTranscriber = nil
         diarizer = nil
     }
 
-    private func loadedSpeechModel() async throws -> AsrManager {
-        if let asrManager { return asrManager }
-        let directory = AsrModels.defaultCacheDirectory(for: asrVersion)
-        guard AsrModels.modelsExist(at: directory, version: asrVersion) else {
+    private func loadedSpeechTranscriber() throws -> MeetingNemotronTranscriber {
+        if let speechTranscriber { return speechTranscriber }
+        guard Self.isSpeechModelDownloaded() else {
             throw AnalyzerError.speechModelMissing
         }
-        logger.notice("Loading Parakeet for a meeting from \(directory.path, privacy: .public)")
-        let models = try await AsrModels.load(
-            from: directory,
-            configuration: nil,
-            version: asrVersion,
-            encoderPrecision: .int8
-        )
-        let manager = AsrManager(config: .default)
-        try await manager.loadModels(models)
-        asrManager = manager
-        return manager
+        let directory = FluidAudioModelManager.nemotronCacheDirectory(for: Self.speechModelName)
+        logger.notice("Loading Nemotron for a meeting from \(directory.path, privacy: .public)")
+        let transcriber = MeetingNemotronTranscriber(modelDirectory: directory)
+        speechTranscriber = transcriber
+        return transcriber
     }
 }

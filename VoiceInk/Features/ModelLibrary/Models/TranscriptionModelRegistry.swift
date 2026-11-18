@@ -4,9 +4,12 @@ enum TranscriptionModelRegistry {
 
     /// The one model Voicer offers and installs on its own. The other providers stay in the code so upstream
     /// merges stay easy, but nothing outside this list reaches a picker, a mode or the runtime.
-    static let defaultModelName = "parakeet-ultra"
+    static let defaultModelName = "nemotron-multilingual-0.6b"
 
-    private static let offeredModelNames = [defaultModelName]
+    /// Meetings always run on Nemotron (Hinglish). Dictation is English, so Parakeet Ultra is offered for it too.
+    /// The other Parakeet entries (V2, V3, Unified) stay in the code but are not offered.
+    static let dictationParakeetName = "parakeet-ultra"
+    private static let offeredModelNames = [defaultModelName, dictationParakeetName]
 
     static var models: [any TranscriptionModel] {
         offeredModelNames.compactMap { name in predefinedModels.first { $0.name == name } }
