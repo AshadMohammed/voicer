@@ -112,6 +112,8 @@ class TranscriptionPipeline {
                 )
             }
             text = TranscriptionOutputFilter.filter(text)
+            // Nemotron writes Hindi in Devanagari; spell it in Roman letters. Text with no Devanagari is left alone.
+            text = HinglishRomanizer.romanize(text)
             let transcriptionDuration = Date().timeIntervalSince(transcriptionStart)
 
             if shouldCancel() {
