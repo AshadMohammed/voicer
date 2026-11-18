@@ -48,6 +48,10 @@ enum MeetingMarkdown {
             if summary.keyPoints.isEmpty {
                 lines.append("_Nothing notable was captured._")
             }
+            if let note = summary.note, !note.isEmpty {
+                lines.append("")
+                lines.append("_\(note)_")
+            }
         } else if let reason = record.summaryUnavailableReason {
             lines.append("_No summary: \(reason)_")
         } else {

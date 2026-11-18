@@ -403,7 +403,9 @@ final class MeetingsCoordinator: ObservableObject {
         var engineName = "Nemotron"
         if MeetingAudioAnalyzer.isSpeechModelDownloaded() {
             do {
-                let result = try await MeetingProcessor.process(audio) { [weak self] stage in
+                let result = try await MeetingProcessor.process(
+                    audio, callAppDetected: !isRecovery && callName != nil
+                ) { [weak self] stage in
                     Task { @MainActor in self?.update(jobID, stage: stage) }
                 }
                 record.utterances = result.utterances

@@ -68,7 +68,15 @@ struct MeetingDetailView: View {
                             .font(.appSans(13))
                             .foregroundStyle(AppTheme.Palette.muted)
                     } else if let summary = meeting.summary, !summary.keyPoints.isEmpty {
-                        bullets(summary.keyPoints, marker: "circle.fill", markerSize: 5)
+                        VStack(alignment: .leading, spacing: 8) {
+                            bullets(summary.keyPoints, marker: "circle.fill", markerSize: 5)
+                            if let note = summary.note, !note.isEmpty {
+                                Text(note)
+                                    .font(.appSans(12))
+                                    .foregroundStyle(AppTheme.Palette.muted)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                        }
                     } else {
                         Text(meeting.summaryUnavailableReason ?? String(localized: "No summary for this meeting."))
                             .font(.appSans(13))

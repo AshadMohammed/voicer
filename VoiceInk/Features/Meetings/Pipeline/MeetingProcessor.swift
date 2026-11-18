@@ -20,17 +20,19 @@ struct MeetingResult: Sendable {
 }
 
 /// Runs a finished meeting through transcription, speaker labelling and the summary.
+/// `callAppDetected` is true when a call app (or a meeting site in a browser) was recognised for the meeting.
 enum MeetingProcessor {
     private static let logger = Logger(subsystem: "com.ashadmohammed.voicer", category: "MeetingProcessor")
 
     static func process(
         _ audio: MeetingAudio,
+        callAppDetected: Bool = false,
         progress: @escaping @Sendable (String) -> Void = { _ in }
     ) async throws -> MeetingResult {
         let analyzer = MeetingAudioAnalyzer()
         let transcript: Transcript
         do {
-            transcript = try await transcribe(audio, analyzer: analyzer, progress: progress)
+            transcript = try await transcribe(audio, analyzer: analyzer, callAppDetected: callAppDetected, progress: progress)
         } catch {
             await analyzer.release()
             throw error
@@ -55,6 +57,7 @@ enum MeetingProcessor {
     private static func transcribe(
         _ audio: MeetingAudio,
         analyzer: MeetingAudioAnalyzer,
+        callAppDetected: Bool,
         progress: @escaping @Sendable (String) -> Void
     ) async throws -> Transcript {
         var notes: [String] = []
@@ -87,7 +90,8 @@ enum MeetingProcessor {
 
             if MeetingAudioAnalyzer.isSilent(callSamples) {
                 // Nothing came through the call audio: an in-person meeting, or system audio wasn't allowed.
-                if callURL != nil {
+                // The warning only fits a meeting that had a call app; an in-person one has no call to hear.
+                if callURL != nil, callAppDetected {
                     notes.append(
                         "No call audio was recorded, so everyone is labelled from your microphone. If this was a call, check that Voicer is allowed under System Settings > Privacy & Security > Screen & System Audio Recording."
                     )

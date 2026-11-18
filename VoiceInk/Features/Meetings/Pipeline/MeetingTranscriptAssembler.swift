@@ -32,7 +32,7 @@ enum MeetingTranscriptAssembler {
     static func utterances(
         from words: [MeetingWord],
         speaker: String,
-        pause: TimeInterval = 1.2
+        pause: TimeInterval = sameSpeakerJoinGap
     ) -> [MeetingUtterance] {
         var result: [MeetingUtterance] = []
         for word in words {
@@ -44,16 +44,17 @@ enum MeetingTranscriptAssembler {
                 result.append(MeetingUtterance(speaker: speaker, start: word.start, end: word.end, text: word.text))
             }
         }
-        return result
+        return result.map(capitalizedFirstLetter)
     }
 
     /// Gives each word the diarized voice that overlaps it most, then groups the words into utterances.
     /// Words that fall in no turn take the nearest turn within two seconds, or the previous word's voice.
+    /// Speaker changes are moved to the nearest pause so a sentence is not cut in two, and each line starts with a capital.
     static func utterances(
         from words: [MeetingWord],
         spans: [MeetingSpeakerSpan],
         names: [String: String],
-        pause: TimeInterval = 1.2
+        pause: TimeInterval = sameSpeakerJoinGap
     ) -> [MeetingUtterance] {
         guard !spans.isEmpty else {
             return utterances(from: words, speaker: unknownSpeakerName, pause: pause)
@@ -68,6 +69,7 @@ enum MeetingTranscriptAssembler {
             previous = speakerID
         }
         labels = absorbingStrayVoices(labels, words: words)
+        labels = snappingTurnChanges(labels, words: words)
 
         var result: [MeetingUtterance] = []
         for (word, speakerID) in zip(words, labels) {
@@ -80,7 +82,90 @@ enum MeetingTranscriptAssembler {
                 result.append(MeetingUtterance(speaker: name, start: word.start, end: word.end, text: word.text))
             }
         }
+        return result.map(capitalizedFirstLetter)
+    }
+
+    /// Same-speaker utterances closer together than this are one utterance.
+    static let sameSpeakerJoinGap: TimeInterval = 1.5
+    /// How far a speaker change may move to land on a pause, either side of where the diarizer put it.
+    static let turnSnapWindow: TimeInterval = 1.0
+    /// The smallest silence between two words that counts as a pause to break a turn at.
+    static let minimumTurnPause: TimeInterval = 0.15
+
+    /// The diarizer cuts turns at its own idea of a boundary, often in the middle of a phrase. Each speaker change
+    /// moves to the longest pause between words within a second of it, preferring a pause after a full stop, question
+    /// or exclamation mark. With no real pause in reach it stays where the diarizer put it.
+    static func snappingTurnChanges(_ labels: [String?], words: [MeetingWord]) -> [String?] {
+        guard labels.count == words.count, labels.count > 1 else { return labels }
+
+        // Each run of one voice, as the index of its first word. Run 0 starts at word 0 and never moves.
+        var starts: [Int] = [0]
+        for index in 1..<labels.count where labels[index] != labels[index - 1] { starts.append(index) }
+        guard starts.count > 1 else { return labels }
+        let originalStarts = starts
+
+        for run in 1..<starts.count {
+            let boundary = originalStarts[run]
+            let target = (words[boundary - 1].end + words[boundary].start) / 2
+            // A run keeps at least one word: the change cannot pass the previous change or the next one.
+            let lowest = starts[run - 1] + 1
+            let highest = (run + 1 < starts.count ? originalStarts[run + 1] : words.count) - 1
+            guard lowest <= highest else { continue }
+
+            var best: (index: Int, endsSentence: Bool, gap: TimeInterval, distance: TimeInterval)?
+            for index in lowest...highest {
+                let gap = words[index].start - words[index - 1].end
+                guard gap >= minimumTurnPause else { continue }
+                let middle = (words[index - 1].end + words[index].start) / 2
+                let distance = abs(middle - target)
+                guard distance <= turnSnapWindow else { continue }
+                let candidate = (index: index, endsSentence: endsSentence(words[index - 1].text), gap: gap, distance: distance)
+                if let current = best {
+                    if candidate.endsSentence != current.endsSentence {
+                        if candidate.endsSentence { best = candidate }
+                    } else if candidate.gap > current.gap + 0.0001
+                        || (abs(candidate.gap - current.gap) <= 0.0001 && candidate.distance < current.distance)
+                    {
+                        best = candidate
+                    }
+                } else {
+                    best = candidate
+                }
+            }
+            if let best { starts[run] = best.index }
+        }
+
+        var result: [String?] = []
+        result.reserveCapacity(labels.count)
+        for run in 0..<starts.count {
+            let end = run + 1 < starts.count ? starts[run + 1] : labels.count
+            let label = labels[originalStarts[run]]
+            result.append(contentsOf: repeatElement(label, count: end - starts[run]))
+        }
         return result
+    }
+
+    private static func endsSentence(_ word: String) -> Bool {
+        var text = Substring(word)
+        while let last = text.last, "\"'”’)]".contains(last) { text = text.dropLast() }
+        guard let last = text.last else { return false }
+        return ".?!…。？！".contains(last)
+    }
+
+    /// A line starts with a capital when it begins with a lowercase Latin letter.
+    static func capitalizedFirstLetter(_ utterance: MeetingUtterance) -> MeetingUtterance {
+        var utterance = utterance
+        utterance.text = capitalizingFirstLetter(utterance.text)
+        return utterance
+    }
+
+    static func capitalizingFirstLetter(_ text: String) -> String {
+        guard let first = text.first, first.isLowercase, first.isLetter,
+            let scalar = first.unicodeScalars.first, scalar.value < 0x250
+        else { return text }
+        let upper = String(first).uppercased()
+        guard upper.count == 1 else { return text }
+        return upper + text.dropFirst()
     }
 
     /// The diarizer sometimes invents a voice for a second or two of someone's speech. A voice with
