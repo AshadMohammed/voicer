@@ -77,6 +77,8 @@ class FluidAudioTranscriptionService: TranscriptionService {
 
         await cleanupLoadedManagers()
 
+        // Nemotron's encoder decodes about 4x faster on the CPU than the Neural Engine on this Mac and loads in 2s, not 20-40s.
+        setenv("FLUIDAUDIO_ENCODER_CU", "CPU", 0)
         let manager = StreamingNemotronMultilingualAsrManager()
         try await manager.loadModels(from: FluidAudioModelManager.nemotronCacheDirectory(for: modelName))
         self.nemotronAsrManager = manager
@@ -163,9 +165,6 @@ class FluidAudioTranscriptionService: TranscriptionService {
                 for: model
             )
             let languageHint = FluidAudioModelManager.nemotronLanguageHint(from: compatibleLanguage)
-            await nemotronAsrManager.setLanguage(languageHint)
-            await nemotronAsrManager.reset()
-
             var speechAudio = try await preparedSpeechAudio(from: audioURL)
             guard !speechAudio.isEmpty else { return "" }
             let trailingSilenceSamples = 16_000
@@ -174,9 +173,12 @@ class FluidAudioTranscriptionService: TranscriptionService {
                 speechAudio += [Float](repeating: 0, count: trailingSilenceSamples)
             }
 
-            _ = try await nemotronAsrManager.process(samples: speechAudio)
-            let text = try await nemotronAsrManager.finish()
-            return text
+            // Auto-language pass, then the en-US pass and the mixed-speech restorer when needed (shared with meetings).
+            return try await NemotronTwoPassDecoder.decode(
+                samples: speechAudio,
+                with: nemotronAsrManager,
+                languageHint: languageHint
+            ).text
         }
 
         let targetVersion = version(for: model)
